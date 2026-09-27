@@ -5,6 +5,21 @@ PostgreSQL, Alembic, and uv. Supports health checking, event creation, and event
 browsing, plus local user registration and JWT authentication. Ticket reservations
 are not implemented yet.
 
+## Application structure
+
+- `app/routers/` defines HTTP endpoints and translates application errors into
+  status codes and responses.
+- `app/schemas/` defines request validation and public response models.
+- `app/services/` handles account and event operations, database queries, and
+  write transactions. Services receive sessions and explicit inputs rather than
+  HTTP requests or application state.
+- `app/security.py` handles password hashing and JWT creation/validation;
+  `app/dependencies.py` resolves bearer credentials into the current user.
+- `app/errors.py` defines application exceptions independent of HTTP.
+- `app/main.py` assembles routers, manages resource startup/shutdown, and registers
+  the validation-error handler. Models, settings, and database session management
+  remain in their dedicated modules.
+
 ## Local setup
 
 Install uv and ensure PostgreSQL is running on localhost:5432. The local databases

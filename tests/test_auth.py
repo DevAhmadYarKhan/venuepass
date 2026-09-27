@@ -7,7 +7,7 @@ import jwt
 import pytest
 from sqlalchemy import select
 
-from app.auth import password_hasher
+from app.security import password_hasher
 from app.models import User
 
 pytestmark = pytest.mark.integration

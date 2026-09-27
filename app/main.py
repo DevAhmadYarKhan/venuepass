@@ -5,14 +5,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from starlette.concurrency import run_in_threadpool
 import secrets
 
-from app.auth import router as auth_router, password_hasher
+from app.routers import auth, events, health, users
+from app.security import hash_password
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings, get_settings
-from app.events import router as events_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -24,7 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         config = settings if settings is not None else get_settings()
         app.state.settings = config
         # Compute the dummy hash off the event loop once per application lifespan.
-        app.state.dummy_password_hash = await run_in_threadpool(password_hasher.hash, secrets.token_urlsafe(32))
+        app.state.dummy_password_hash = await hash_password(secrets.token_urlsafe(32))
         # Engine creation is lazy: startup does not open a database connection.
         # Pre-ping checks pooled connections before a later request uses them.
         engine = create_async_engine(str(config.database_url), pool_pre_ping=True)
@@ -37,8 +36,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await engine.dispose()
 
     app = FastAPI(title="VenuePass API", lifespan=lifespan)
-    app.include_router(events_router)
-    app.include_router(auth_router)
+    app.include_router(events.router)
+    app.include_router(auth.router)
+    app.include_router(users.router)
+    app.include_router(health.router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
@@ -48,11 +49,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for error in exc.errors()
         ]
         return JSONResponse(status_code=422, content={"detail": errors})
-
-    @app.get("/health", tags=["health"])
-    async def health() -> dict[str, str]:
-        """Report application liveness without requiring PostgreSQL to be available."""
-        return {"status": "ok"}
 
     return app
 

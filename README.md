@@ -2,7 +2,8 @@
 
 Event ticket reservation API built with Python 3.14, FastAPI, async SQLAlchemy,
 PostgreSQL, Alembic, and uv. Supports health checking, event creation, and event
-browsing. Authentication and ticket reservations are not implemented yet.
+browsing, plus local user registration and JWT authentication. Ticket reservations
+are not implemented yet.
 
 ## Local setup
 
@@ -16,7 +17,7 @@ cp .env.example .env  # Only on a fresh checkout; preserve an existing .env.
 
 Replace `YOUR_PASSWORD` in `.env` with the database role's password. Settings load
 the repository-root `.env`; environment variables take precedence. `DATABASE_URL`
-is required; `TEST_DATABASE_URL` is required only for integration tests. `.env` is
+and `JWT_SECRET` are required; `TEST_DATABASE_URL` is required only for integration tests. `.env` is
 ignored by Git. Keep real credentials out of committed files.
 
 ```bash
@@ -40,8 +41,8 @@ uncommitted transaction when the request ends. The engine is disposed at shutdow
 uv run alembic current
 ```
 
-The initial revision `20260927_0001` creates the events table. Apply it with
-`uv run alembic upgrade head`; `current` then reports this revision as the head.
+Revision `20260927_0001` creates events; `20260927_0002` adds users. Apply both
+with `uv run alembic upgrade head`; `current` reports `20260927_0002` as the head.
 
 When adding models, subclass `app.database.Base` and import their modules in `alembic/env.py`
 so autogeneration sees their metadata. Then generate, review, and apply a migration:
@@ -78,7 +79,7 @@ curl 'http://127.0.0.1:8000/events/REPLACE_WITH_EVENT_UUID'
 events. `limit` defaults to 20 (range 1–100); `offset` defaults to 0 and must be
 nonnegative. `GET /events/{id}` returns one event, HTTP 404 for an unknown UUID,
 or HTTP 422 for a malformed UUID. Responses always include nullable `ends_at`.
-These endpoints are open for the local prototype; there is no authentication yet.
+Event endpoints remain open for the local prototype; organizer permissions are deferred.
 
 ## Tests
 
@@ -99,4 +100,29 @@ unset venuepass_test_url
 Integration tests require an otherwise empty, migrated `venuepass_db_test` and
 explicitly use `TEST_DATABASE_URL`; they never fall back to the application
 database. Endpoint tests write inside an outer transaction rolled back after
-each test, even when an endpoint commits. Unit tests can run without PostgreSQL.
+each test, even when an endpoint commits. The concurrent-registration test uses
+independent committed transactions and deletes its uniquely named account afterward.
+Unit tests can run without PostgreSQL.
+
+## Registration and authentication
+
+Set `JWT_SECRET` in your ignored `.env` to a random signing key of at least 32
+characters. Generate one with `uv run python -c "import secrets; print(secrets.token_hex(32))"`.
+Use a different secret for each environment. Changing it invalidates existing tokens.
+
+- `POST /auth/register` accepts JSON `email` and `password`, returning HTTP 201
+  with `id`, `email`, and `created_at`. Emails are validated, trimmed, and normalized
+  to lowercase. Duplicate emails return HTTP 409. Passwords require 15–128
+  characters, are preserved exactly, and are stored as Argon2 hashes.
+- `POST /auth/login` accepts the same JSON fields and returns `access_token`,
+  `token_type: "bearer"`, and `expires_in: 1800`. Invalid credentials return HTTP 401.
+- `GET /users/me` requires `Authorization: Bearer <access_token>` and returns the
+  account's public fields. Invalid or expired tokens return HTTP 401.
+
+In `/docs`, call `/auth/login` with **Try it out**, copy `access_token`, then click
+**Authorize** and paste it. This uses HTTP Bearer authentication, not OAuth2.
+
+Registration permits immediate login; email ownership is not verified. Tokens
+expire after 30 minutes, at which point users log in again. Refresh, server-side
+logout/revocation, password reset, and roles are deferred. Passwords and hashes
+are excluded from public responses, and validation errors omit submitted values.

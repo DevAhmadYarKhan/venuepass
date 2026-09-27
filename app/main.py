@@ -2,7 +2,13 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
+import secrets
+
+from app.auth import router as auth_router, password_hasher
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings, get_settings
@@ -16,6 +22,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         """Create database resources at startup and release them at shutdown."""
         config = settings if settings is not None else get_settings()
+        app.state.settings = config
+        # Compute the dummy hash off the event loop once per application lifespan.
+        app.state.dummy_password_hash = await run_in_threadpool(password_hasher.hash, secrets.token_urlsafe(32))
         # Engine creation is lazy: startup does not open a database connection.
         # Pre-ping checks pooled connections before a later request uses them.
         engine = create_async_engine(str(config.database_url), pool_pre_ping=True)
@@ -29,6 +38,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="VenuePass API", lifespan=lifespan)
     app.include_router(events_router)
+    app.include_router(auth_router)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError):
+        """Omit submitted values so malformed credentials cannot leak in errors."""
+        errors = [
+            {"loc": error["loc"], "msg": error["msg"], "type": error["type"]}
+            for error in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": errors})
 
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:

@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import PostgresDsn
+from pydantic import Field, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve from this module so .env loading does not depend on the working directory.
@@ -18,6 +18,8 @@ class Settings(BaseSettings):
         env_file=ROOT_DIR / ".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    # No default signing key: each environment must supply its own secret.
+    jwt_secret: SecretStr = Field(min_length=32)
     database_url: PostgresDsn
     # Running the API does not require a test database; integration tests do.
     test_database_url: PostgresDsn | None = None

@@ -8,7 +8,7 @@ from app.main import create_app
 
 async def test_health_without_database():
     """Exercise startup and HTTP routes with an intentionally unreachable DB URL."""
-    settings = Settings(
+    settings = Settings(jwt_secret="test-signing-secret-that-is-at-least-32-characters",
         _env_file=None,
         database_url="postgresql+psycopg://unused:unused@127.0.0.1:1/unavailable",
     )

@@ -1,0 +1,30 @@
+[project]
+# Runtime dependencies; uv.lock records the exact resolved versions.
+name = "venuepass-api"
+version = "0.1.0"
+description = "Event ticket reservation API"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "psycopg[binary]>=3.2,<4",
+    "alembic>=1.14,<2",
+    "pydantic-settings>=2.7,<3",
+]
+
+[dependency-groups]
+# uv sync includes this local development tooling by default.
+dev = [
+    "pytest>=8,<10",
+    "pytest-asyncio>=1,<2",
+    "httpx>=0.28,<1",
+]
+
+[tool.pytest.ini_options]
+# Discover tests from the repository root and run async tests on asyncio.
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = ["integration: requires the local PostgreSQL test database"]

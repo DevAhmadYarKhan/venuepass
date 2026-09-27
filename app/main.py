@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings, get_settings
+from app.events import router as events_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await engine.dispose()
 
     app = FastAPI(title="VenuePass API", lifespan=lifespan)
+    app.include_router(events_router)
 
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:

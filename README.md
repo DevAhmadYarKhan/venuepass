@@ -1,8 +1,8 @@
 # VenuePass API
 
 Event ticket reservation API built with Python 3.14, FastAPI, async SQLAlchemy,
-PostgreSQL, Alembic, and uv. This initial scaffold provides health checking and
-database infrastructure; no application models or migration revisions are defined yet.
+PostgreSQL, Alembic, and uv. Supports health checking, event creation, and event
+browsing. Authentication and ticket reservations are not implemented yet.
 
 ## Local setup
 
@@ -20,6 +20,7 @@ is required; `TEST_DATABASE_URL` is required only for integration tests. `.env` 
 ignored by Git. Keep real credentials out of committed files.
 
 ```bash
+uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
@@ -39,16 +40,10 @@ uncommitted transaction when the request ends. The engine is disposed at shutdow
 uv run alembic current
 ```
 
-On an empty database this reports no revision. The existing local databases already
-contain `events` and `alembic_version` tables: `venuepass_db` references revision
-`20260925_0001`, and `venuepass_db_test` references `20260926_0002`. Those migration
-files are absent from this repository, so `alembic current` currently reports
-"Can't locate revision". Recover the matching migration history before managing
-these existing schemas; do not stamp or reset them without deciding how to preserve
-their data. The scaffold does not alter these tables.
+The initial revision `20260927_0001` creates the events table. Apply it with
+`uv run alembic upgrade head`; `current` then reports this revision as the head.
 
-When adding
-models, subclass `app.database.Base` and import the model modules in `alembic/env.py`
+When adding models, subclass `app.database.Base` and import their modules in `alembic/env.py`
 so autogeneration sees their metadata. Then generate, review, and apply a migration:
 
 ```bash
@@ -59,6 +54,32 @@ uv run alembic upgrade head
 Alembic uses `DATABASE_URL`. To target the test database, explicitly override that
 environment variable with its URL when running migration commands.
 
+## Events API
+
+`POST /events` creates an event and returns HTTP 201 with its UUID, submitted
+fields, and database-generated `created_at`. `name` and `venue` are trimmed and
+must contain 1–255 characters. `capacity` must be an integer from 1 to 2147483647.
+`starts_at` must include a timezone and be in the future. Optional `ends_at` must
+include a timezone and be strictly later than `starts_at`; omitted or null means
+no fixed finish time. `description` is optional. Invalid input returns HTTP 422.
+
+Choose future dates when trying this example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/events \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Python meetup","venue":"Main hall","description":"An evening of talks","starts_at":"2099-10-01T18:00:00Z","ends_at":"2099-10-01T20:00:00Z","capacity":50}'
+
+curl 'http://127.0.0.1:8000/events?limit=20&offset=0'
+curl 'http://127.0.0.1:8000/events/REPLACE_WITH_EVENT_UUID'
+```
+
+`GET /events` returns an array ordered by start time, then UUID, including past
+events. `limit` defaults to 20 (range 1–100); `offset` defaults to 0 and must be
+nonnegative. `GET /events/{id}` returns one event, HTTP 404 for an unknown UUID,
+or HTTP 422 for a malformed UUID. Responses always include nullable `ends_at`.
+These endpoints are open for the local prototype; there is no authentication yet.
+
 ## Tests
 
 ```bash
@@ -66,6 +87,16 @@ uv run pytest
 uv run pytest -m "not integration"
 ```
 
-The integration test executes read-only queries against `TEST_DATABASE_URL` and
-requires its database name to be `venuepass_db_test`. It never falls back to the
-application database. Unit tests can run without PostgreSQL.
+Before integration tests, migrate the test database using the URL from your
+local `.env` (the command prompts for it to avoid storing credentials in shell history):
+
+```bash
+read -r -s -p 'Test database URL: ' venuepass_test_url
+DATABASE_URL="$venuepass_test_url" uv run alembic upgrade head
+unset venuepass_test_url
+```
+
+Integration tests require an otherwise empty, migrated `venuepass_db_test` and
+explicitly use `TEST_DATABASE_URL`; they never fall back to the application
+database. Endpoint tests write inside an outer transaction rolled back after
+each test, even when an endpoint commits. Unit tests can run without PostgreSQL.

@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
 from app.database import Base
+from app import models  # Register mapped tables before Alembic inspects metadata.
 
-# Import future model modules here so their tables enter Base.metadata.
+# Import future model modules here as well so autogeneration sees their tables.
 target_metadata = Base.metadata
 
 

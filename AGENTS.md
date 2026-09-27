@@ -1,5 +1,8 @@
 # Code documentation
 
+- Never create Git commits unless the user explicitly authorizes it. Leave changes
+  uncommitted and offer suggested commit messages instead.
+
 - Comment code you add or modify. Use docstrings to explain module, class, and
   function responsibilities, and inline comments to explain important choices,
   lifecycle behavior, assumptions, and non-obvious logic.

@@ -23,3 +23,11 @@ class UserNotFound(Exception):
 
 class VenueNotFound(Exception):
     """No venue exists for the requested identifier."""
+
+
+class VenueOwnershipRequired(Exception):
+    """Only the venue owner may change its seating."""
+
+
+class DuplicateSeat(Exception):
+    """The batch contains a repeated or already-existing seat identity."""

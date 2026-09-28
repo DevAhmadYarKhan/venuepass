@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import secrets
 
-from app.routers import auth, events, health, users, venues
+from app.routers import auth, events, health, users, venues, seats
 from app.security import hash_password
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -38,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="VenuePass API", lifespan=lifespan)
     app.include_router(events.router)
     app.include_router(venues.router)
+    app.include_router(seats.router)
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(health.router)

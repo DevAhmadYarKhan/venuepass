@@ -69,3 +69,18 @@ class Venue(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class Seat(Base):
+    """A physical venue seat; booking availability belongs to future event bookings."""
+
+    __tablename__ = "seats"
+    __table_args__ = (
+        UniqueConstraint("venue_id", "section", "row", "number", name="uq_seats_identity"),
+        CheckConstraint("number > 0", name="ck_seats_number_positive"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    venue_id: Mapped[UUID] = mapped_column(ForeignKey("venues.id", ondelete="RESTRICT"))
+    section: Mapped[str] = mapped_column(String(100))
+    row: Mapped[str] = mapped_column(String(100))
+    number: Mapped[int] = mapped_column(Integer)

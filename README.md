@@ -57,7 +57,8 @@ uv run alembic current
 ```
 
 Revision `20260927_0001` creates events; `20260927_0002` adds users. Apply both
-with `uv run alembic upgrade head`; `current` reports `20260928_0004` as the head.
+with `uv run alembic upgrade head`; `current` reports `20260928_0005` as the head.
+Revision `20260928_0005` adds physical venue seats without modifying existing data.
 Revision `20260928_0004` adds venues and venue-manager permission, preserving existing
 users and events. Downgrading that revision removes venue records and the new flag.
 
@@ -200,5 +201,38 @@ curl 'http://127.0.0.1:8000/venues?limit=20&offset=0'
 curl 'http://127.0.0.1:8000/venues/REPLACE_WITH_VENUE_UUID'
 ```
 
-Editing, deletion, shared staff access, seats, and event-to-venue relationships
+Editing, deletion, shared staff access, and event-to-venue relationships
 are deferred. Events continue to use their existing free-text venue field.
+
+## Venue seats
+
+Venue owners with current venue-manager permission can add seats in atomic batches:
+
+```bash
+curl -X POST http://127.0.0.1:8000/venues/VENUE_UUID/seats \
+  -H 'Authorization: Bearer OWNER_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"seats":[{"section":"Main","row":"A","number":1},{"section":"Main","row":"A","number":2}]}'
+curl 'http://127.0.0.1:8000/venues/VENUE_UUID/seats?limit=100&offset=0'
+```
+
+`POST /venues/{venue_id}/seats` accepts 1–500 explicit seats and returns HTTP 201
+with an array in request order. Each response includes `id`, `venue_id`, `section`,
+`row`, and `number`. Section and row are trimmed, case-sensitive labels of 1–100
+characters. Number is an integer from 1 to 2147483647. Venue membership comes from
+the URL. The same section/row/number cannot appear twice within a venue.
+
+A duplicate within the batch or already stored returns HTTP 409 and inserts none
+of that batch. This also applies to concurrent overlapping requests. Invalid
+input returns HTTP 422, missing authentication 401, missing permission or ownership
+403, and unknown venues 404.
+
+`GET /venues/{venue_id}/seats` is public. It returns an array ordered
+lexicographically by section and row, then numerically by seat number. `limit`
+defaults to 100 (range 1–500); `offset` defaults to 0 and must be nonnegative.
+Existing venues without seats return an empty array; unknown venues return 404.
+Venues with seats cannot be deleted while those seats reference them.
+
+Seats describe physical locations, not event availability. Editing, deletion,
+layout generation, prices, and booking remain deferred. The concurrency test uses
+independent committed transactions and cleans up its own seats, venue, and user.

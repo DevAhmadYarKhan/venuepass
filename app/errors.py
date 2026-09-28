@@ -15,3 +15,7 @@ class InvalidToken(Exception):
 
 class EventNotFound(Exception):
     """No event exists for the requested identifier."""
+
+
+class UserNotFound(Exception):
+    """No account exists for the requested normalized email."""

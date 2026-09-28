@@ -9,9 +9,9 @@ from app.models import Event
 from app.schemas.events import EventCreate
 
 
-async def create_event(session: AsyncSession, payload: EventCreate) -> Event:
+async def create_event(session: AsyncSession, payload: EventCreate, *, organizer_id: UUID) -> Event:
     """Commit validated event data and load generated fields."""
-    event = Event(**payload.model_dump())
+    event = Event(**payload.model_dump(), organizer_id=organizer_id)
     session.add(event)
     await session.commit()
     await session.refresh(event)

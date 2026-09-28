@@ -40,6 +40,7 @@ class EventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    organizer_id: UUID
     name: str
     description: str | None
     venue: str

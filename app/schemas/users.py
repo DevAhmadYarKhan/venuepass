@@ -11,6 +11,7 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     email: str
+    is_organizer: bool
     created_at: datetime
 
 

@@ -57,7 +57,11 @@ uv run alembic current
 ```
 
 Revision `20260927_0001` creates events; `20260927_0002` adds users. Apply both
-with `uv run alembic upgrade head`; `current` reports `20260927_0002` as the head.
+with `uv run alembic upgrade head`; `current` reports `20260928_0003` as the head.
+
+Revision `20260928_0003` adds organizer permission and required event ownership.
+It deletes existing event records because their creators were not recorded, while
+preserving user accounts. Downgrading cannot restore the deleted events.
 
 When adding models, subclass `app.database.Base` and import their modules in `alembic/env.py`
 so autogeneration sees their metadata. Then generate, review, and apply a migration:
@@ -73,7 +77,7 @@ environment variable with its URL when running migration commands.
 ## Events API
 
 `POST /events` creates an event and returns HTTP 201 with its UUID, submitted
-fields, and database-generated `created_at`. `name` and `venue` are trimmed and
+fields, the authenticated user’s `organizer_id`, and database-generated `created_at`. `name` and `venue` are trimmed and
 must contain 1–255 characters. `capacity` must be an integer from 1 to 2147483647.
 `starts_at` must include a timezone and be in the future. Optional `ends_at` must
 include a timezone and be strictly later than `starts_at`; omitted or null means
@@ -83,6 +87,7 @@ Choose future dates when trying this example:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/events \
+  -H 'Authorization: Bearer REPLACE_WITH_ORGANIZER_TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{"name":"Python meetup","venue":"Main hall","description":"An evening of talks","starts_at":"2099-10-01T18:00:00Z","ends_at":"2099-10-01T20:00:00Z","capacity":50}'
 
@@ -94,7 +99,22 @@ curl 'http://127.0.0.1:8000/events/REPLACE_WITH_EVENT_UUID'
 events. `limit` defaults to 20 (range 1–100); `offset` defaults to 0 and must be
 nonnegative. `GET /events/{id}` returns one event, HTTP 404 for an unknown UUID,
 or HTTP 422 for a malformed UUID. Responses always include nullable `ends_at`.
-Event endpoints remain open for the local prototype; organizer permissions are deferred.
+Event browsing remains public. Creation requires a valid bearer token (HTTP 401
+otherwise) and organizer permission (HTTP 403 for ordinary users). Request input
+cannot override `organizer_id`.
+
+Register an account, then grant organizer permission locally:
+
+```bash
+uv run python -m app.cli promote-organizer user@example.com
+```
+
+This command uses `DATABASE_URL`, normalizes the email, and succeeds if the account
+is already an organizer. An unknown account returns a nonzero exit code. Existing
+login tokens work immediately after promotion because permission is read from the
+database. Users who own events cannot be deleted while those events reference them.
+New and existing accounts default to `is_organizer: false`; public registration
+cannot grant this permission. User responses include `is_organizer`.
 
 ## Tests
 
@@ -115,8 +135,8 @@ unset venuepass_test_url
 Integration tests require an otherwise empty, migrated `venuepass_db_test` and
 explicitly use `TEST_DATABASE_URL`; they never fall back to the application
 database. Endpoint tests write inside an outer transaction rolled back after
-each test, even when an endpoint commits. The concurrent-registration test uses
-independent committed transactions and deletes its uniquely named account afterward.
+each test, even when an endpoint commits. The CLI and concurrent-registration tests use
+independent committed transactions and delete their uniquely named accounts afterward.
 Unit tests can run without PostgreSQL.
 
 ## Registration and authentication
@@ -126,7 +146,7 @@ characters. Generate one with `uv run python -c "import secrets; print(secrets.t
 Use a different secret for each environment. Changing it invalidates existing tokens.
 
 - `POST /auth/register` accepts JSON `email` and `password`, returning HTTP 201
-  with `id`, `email`, and `created_at`. Emails are validated, trimmed, and normalized
+  with `id`, `email`, `is_organizer`, and `created_at`. Emails are validated, trimmed, and normalized
   to lowercase. Duplicate emails return HTTP 409. Passwords require 15–128
   characters, are preserved exactly, and are stored as Argon2 hashes.
 - `POST /auth/login` accepts the same JSON fields and returns `access_token`,
@@ -139,5 +159,5 @@ In `/docs`, call `/auth/login` with **Try it out**, copy `access_token`, then cl
 
 Registration permits immediate login; email ownership is not verified. Tokens
 expire after 30 minutes, at which point users log in again. Refresh, server-side
-logout/revocation, password reset, and roles are deferred. Passwords and hashes
+logout/revocation, password reset, and venue permissions are deferred. Passwords and hashes
 are excluded from public responses, and validation errors omit submitted values.

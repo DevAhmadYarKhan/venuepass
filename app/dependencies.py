@@ -37,3 +37,13 @@ async def get_current_user(
     if user is None:
         raise unauthorized()
     return user
+
+
+async def get_organizer(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """Check current database permission so promotions work with existing tokens."""
+    if not user.is_organizer:
+        raise HTTPException(403, "Organizer permission required")
+    return user
+
+
+Organizer = Annotated[User, Depends(get_organizer)]

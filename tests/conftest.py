@@ -42,3 +42,19 @@ async def event_client():
         await engine.dispose()
 
 
+
+@pytest.fixture
+async def organizer_client(event_client):
+    """Authenticate an organizer while retaining the shared rollback fixture."""
+    from uuid import uuid4
+    from app.models import User
+    from app.security import create_access_token
+
+    client, connection = event_client
+    user_id = uuid4()
+    await connection.execute(User.__table__.insert().values(
+        id=user_id, email=f'{user_id}@example.com', password_hash='unused', is_organizer=True,
+    ))
+    token = create_access_token(user_id, 'test-signing-secret-that-is-at-least-32-characters')
+    client.headers['Authorization'] = f'Bearer {token}'
+    yield client, connection, user_id

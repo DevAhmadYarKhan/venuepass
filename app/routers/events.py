@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.dependencies import Session
+from app.dependencies import Organizer, Session
 from app.errors import EventNotFound
 from app.models import Event
 from app.schemas.events import EventCreate, EventRead
@@ -14,9 +14,9 @@ router = APIRouter(prefix="/events", tags=["events"])
 
 
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
-async def create_event(payload: EventCreate, session: Session) -> Event:
+async def create_event(payload: EventCreate, session: Session, organizer: Organizer) -> Event:
     """Persist a validated event and return its generated fields."""
-    return await events.create_event(session, payload)
+    return await events.create_event(session, payload, organizer_id=organizer.id)
 
 
 @router.get("", response_model=list[EventRead])

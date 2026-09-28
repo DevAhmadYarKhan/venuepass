@@ -57,7 +57,9 @@ uv run alembic current
 ```
 
 Revision `20260927_0001` creates events; `20260927_0002` adds users. Apply both
-with `uv run alembic upgrade head`; `current` reports `20260928_0003` as the head.
+with `uv run alembic upgrade head`; `current` reports `20260928_0004` as the head.
+Revision `20260928_0004` adds venues and venue-manager permission, preserving existing
+users and events. Downgrading that revision removes venue records and the new flag.
 
 Revision `20260928_0003` adds organizer permission and required event ownership.
 It deletes existing event records because their creators were not recorded, while
@@ -146,7 +148,7 @@ characters. Generate one with `uv run python -c "import secrets; print(secrets.t
 Use a different secret for each environment. Changing it invalidates existing tokens.
 
 - `POST /auth/register` accepts JSON `email` and `password`, returning HTTP 201
-  with `id`, `email`, `is_organizer`, and `created_at`. Emails are validated, trimmed, and normalized
+  with `id`, `email`, `is_organizer`, `is_venue_manager`, and `created_at`. Emails are validated, trimmed, and normalized
   to lowercase. Duplicate emails return HTTP 409. Passwords require 15–128
   characters, are preserved exactly, and are stored as Argon2 hashes.
 - `POST /auth/login` accepts the same JSON fields and returns `access_token`,
@@ -159,5 +161,44 @@ In `/docs`, call `/auth/login` with **Try it out**, copy `access_token`, then cl
 
 Registration permits immediate login; email ownership is not verified. Tokens
 expire after 30 minutes, at which point users log in again. Refresh, server-side
-logout/revocation, password reset, and venue permissions are deferred. Passwords and hashes
+logout/revocation, password reset, and venue staff permissions are deferred. Passwords and hashes
 are excluded from public responses, and validation errors omit submitted values.
+
+## Venues
+
+Venue management is independent of event organization. Existing and new users
+start with `is_venue_manager: false`; registration cannot grant either permission.
+A user may have one permission, both, or neither. Grant venue creation locally:
+
+```bash
+uv run python -m app.cli promote-venue-manager user@example.com
+```
+
+The command uses `DATABASE_URL`, normalizes and validates the email, and requires
+an existing account. Repeating promotion succeeds; missing accounts return a
+nonzero exit code. Existing login tokens work after promotion. The organizer
+promotion command remains available and does not grant venue permission.
+
+- `POST /venues` requires venue-manager permission: HTTP 401 without valid
+  authentication, HTTP 403 without permission, HTTP 201 on success.
+- Input contains `name` (1–255 characters) and `address` (1–1,000 characters).
+  Both are trimmed and must be nonblank. Invalid input returns HTTP 422.
+- Responses contain `id`, `name`, `address`, `owner_id`, and `created_at`.
+  Ownership always comes from the authenticated user; submitted owner IDs are
+  ignored. Venue names need not be unique.
+- `GET /venues` is public and returns an array ordered by creation time, then UUID.
+  `limit` defaults to 20 (range 1–100); `offset` defaults to 0 and is nonnegative.
+- `GET /venues/{id}` is public, returning HTTP 404 for unknown UUIDs and HTTP 422
+  for malformed UUIDs. Owners cannot be deleted while venues reference them.
+
+```bash
+curl -X POST http://127.0.0.1:8000/venues \
+  -H 'Authorization: Bearer REPLACE_WITH_VENUE_MANAGER_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Main Hall","address":"1 High Street, London"}'
+curl 'http://127.0.0.1:8000/venues?limit=20&offset=0'
+curl 'http://127.0.0.1:8000/venues/REPLACE_WITH_VENUE_UUID'
+```
+
+Editing, deletion, shared staff access, seats, and event-to-venue relationships
+are deferred. Events continue to use their existing free-text venue field.

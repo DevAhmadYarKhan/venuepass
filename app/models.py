@@ -48,6 +48,24 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text)
     # Registration cannot opt into this permission; only local management grants it.
     is_organizer: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Venue management is independent of event organization.
+    is_venue_manager: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Venue(Base):
+    """A physical location owned by the manager who created it."""
+
+    __tablename__ = "venues"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(255))
+    address: Mapped[str] = mapped_column(String(1000))
+    owner_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

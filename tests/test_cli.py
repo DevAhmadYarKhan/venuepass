@@ -1,30 +1,30 @@
 """Verify CLI parsing and actual database-backed organizer promotion."""
 
 from unittest.mock import AsyncMock
+import pytest
 
 from app import cli
 from app.errors import UserNotFound
 
 
-def test_cli_normalization_and_errors(monkeypatch, capsys):
+@pytest.mark.parametrize("command", ["promote-organizer", "promote-venue-manager"])
+def test_cli_normalization_and_errors(monkeypatch, capsys, command):
     """The command normalizes email and reports invalid/missing accounts clearly."""
     promote = AsyncMock()
     monkeypatch.setattr(cli, 'promote', promote)
-    assert cli.main(['promote-organizer', ' User@Example.com ']) == 0
-    promote.assert_awaited_once_with('user@example.com')
+    assert cli.main([command, ' User@Example.com ']) == 0
+    promote.assert_awaited_once_with('user@example.com', command)
     assert 'enabled' in capsys.readouterr().out
     promote.side_effect = UserNotFound()
-    assert cli.main(['promote-organizer', 'missing@example.com']) == 1
+    assert cli.main([command, 'missing@example.com']) == 1
     assert 'No account found' in capsys.readouterr().err
-    assert cli.main(['promote-organizer', 'invalid']) == 1
+    assert cli.main([command, 'invalid']) == 1
     assert 'Invalid email' in capsys.readouterr().err
 
 
-import pytest
-
-
 @pytest.mark.integration
-async def test_cli_database_promotion():
+@pytest.mark.parametrize("command,flag", [("promote-organizer", "is_organizer"), ("promote-venue-manager", "is_venue_manager")])
+async def test_cli_database_promotion(command, flag):
     """Exercise the real command against a committed test account, then clean up."""
     import asyncio
     import os
@@ -49,16 +49,16 @@ async def test_cli_database_promotion():
             ))
         for _ in range(2):
             process = await asyncio.create_subprocess_exec(
-                '.venv/bin/python', '-m', 'app.cli', 'promote-organizer', f' {email.upper()} ',
+                '.venv/bin/python', '-m', 'app.cli', command, f' {email.upper()} ',
                 env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
             out, err = await process.communicate()
             assert process.returncode == 0, err.decode()
             assert 'enabled' in out.decode()
         async with engine.connect() as connection:
-            assert await connection.scalar(select(User.is_organizer).where(User.id == user_id)) is True
+            assert await connection.scalar(select(getattr(User, flag)).where(User.id == user_id)) is True
         process = await asyncio.create_subprocess_exec(
-            '.venv/bin/python', '-m', 'app.cli', 'promote-organizer', f'missing-{uuid4()}@example.com',
+            '.venv/bin/python', '-m', 'app.cli', command, f'missing-{uuid4()}@example.com',
             env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         _, err = await process.communicate()

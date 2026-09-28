@@ -12,6 +12,7 @@ class UserRead(BaseModel):
     id: UUID
     email: str
     is_organizer: bool
+    is_venue_manager: bool
     created_at: datetime
 
 

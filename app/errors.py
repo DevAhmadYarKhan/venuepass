@@ -19,3 +19,7 @@ class EventNotFound(Exception):
 
 class UserNotFound(Exception):
     """No account exists for the requested normalized email."""
+
+
+class VenueNotFound(Exception):
+    """No venue exists for the requested identifier."""

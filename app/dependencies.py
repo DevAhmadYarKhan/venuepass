@@ -47,3 +47,13 @@ async def get_organizer(user: Annotated[User, Depends(get_current_user)]) -> Use
 
 
 Organizer = Annotated[User, Depends(get_organizer)]
+
+
+async def get_venue_manager(user: Annotated[User, Depends(get_current_user)]) -> User:
+    """Read current permission so promotion takes effect without a new token."""
+    if not user.is_venue_manager:
+        raise HTTPException(403, "Venue manager permission required")
+    return user
+
+
+VenueManager = Annotated[User, Depends(get_venue_manager)]

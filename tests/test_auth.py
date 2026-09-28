@@ -21,7 +21,7 @@ async def test_registration_login_and_current_user(event_client):
     response = await client.post('/auth/register', json={'email': ' User@Example.com ', 'password': PASSWORD})
     assert response.status_code == 201
     user = response.json()
-    assert set(user) == {'id', 'email', 'created_at', 'is_organizer'}
+    assert set(user) == {'id', 'email', 'created_at', 'is_organizer', 'is_venue_manager'}
     assert user['is_organizer'] is False
     assert user['email'] == 'user@example.com'
     hashed = await connection.scalar(select(User.password_hash))

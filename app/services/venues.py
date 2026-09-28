@@ -31,3 +31,11 @@ async def get_venue(session: AsyncSession, venue_id: UUID) -> Venue:
     if venue is None:
         raise VenueNotFound()
     return venue
+
+
+async def lock_venue(session: AsyncSession, venue_id: UUID) -> Venue:
+    """Serialize grants, seat additions, and event snapshots on the venue row."""
+    venue = await session.scalar(select(Venue).where(Venue.id == venue_id).with_for_update())
+    if venue is None:
+        raise VenueNotFound()
+    return venue

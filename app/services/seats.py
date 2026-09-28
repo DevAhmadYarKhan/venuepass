@@ -7,12 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import DuplicateSeat, VenueOwnershipRequired
 from app.models import Seat
 from app.schemas.seats import SeatBatch
-from app.services.venues import get_venue
+from app.services.venues import get_venue, lock_venue
 
 
 async def create_seats(session: AsyncSession, venue_id: UUID, owner_id: UUID, payload: SeatBatch) -> list[Seat]:
     """Require ownership and commit every seat together or none at all."""
-    venue = await get_venue(session, venue_id)
+    venue = await lock_venue(session, venue_id)
     if venue.owner_id != owner_id:
         raise VenueOwnershipRequired()
     identities = [(seat.section, seat.row, seat.number) for seat in payload.seats]

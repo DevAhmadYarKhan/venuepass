@@ -6,18 +6,24 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import select
 
-from app.models import Event
+from app.models import Event, Venue, Seat
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def payload():
+async def payload(organizer_client):
     """Use relative future times so tests do not expire as the calendar advances."""
+    _, connection, owner = organizer_client
+    venue_id = uuid4()
+    await connection.execute(Venue.__table__.insert().values(id=venue_id, owner_id=owner, name='Hall', address='Street'))
+    await connection.execute(Seat.__table__.insert(), [
+        {'venue_id': venue_id, 'section': 'Main', 'row': 'A', 'number': n} for n in range(1, 51)
+    ])
     start = datetime.now(timezone.utc) + timedelta(days=7)
     return {
-        "name": "  Python meetup  ", "venue": "  Main hall  ",
-        "description": "An evening of talks", "capacity": 50,
+        "name": "  Python meetup  ", "venue_id": str(venue_id),
+        "description": "An evening of talks",
         "starts_at": start.isoformat(),
         "ends_at": (start + timedelta(hours=2)).isoformat(),
     }
@@ -30,7 +36,7 @@ async def test_create_and_retrieve(organizer_client, payload):
     assert response.status_code == 201
     event = response.json()
     assert event["name"] == "Python meetup"
-    assert event["venue"] == "Main hall"
+    assert event["venue_id"] == payload["venue_id"]
     assert event["description"] == payload["description"]
     assert event["capacity"] == 50
     assert datetime.fromisoformat(event["created_at"]).tzinfo is not None
@@ -57,7 +63,7 @@ async def test_optional_end(organizer_client, payload, explicit_null):
     assert response.json()["description"] is None
 
 
-async def test_listing_order_pagination_and_past_events(organizer_client):
+async def test_listing_order_pagination_and_past_events(organizer_client, payload):
     """Sort by start then UUID, and continue exposing events after they start."""
     client, connection, organizer_id = organizer_client
     assert (await client.get("/events")).json() == []
@@ -66,7 +72,7 @@ async def test_listing_order_pagination_and_past_events(organizer_client):
     ids = [UUID(int=3), UUID(int=2), UUID(int=1)]
     # Seed past data directly because the creation API deliberately rejects it.
     await connection.execute(Event.__table__.insert(), [
-        {"id": id_, "name": "Event", "venue": "Hall", "capacity": 10,
+        {"id": id_, "name": "Event", "venue_id": UUID(payload["venue_id"]), "capacity": 10,
          "starts_at": start, "organizer_id": organizer_id}
         for id_, start in zip(ids, [future, past, past])
     ])
@@ -126,6 +132,7 @@ async def test_permissions_promotion_and_spoofing(event_client, payload):
     from app.services.users import promote_organizer
 
     client, connection = event_client
+    client.headers.clear()
     response = await client.post('/events', json=payload)
     assert response.status_code == 401
     assert response.headers['www-authenticate'] == 'Bearer'
@@ -140,6 +147,7 @@ async def test_permissions_promotion_and_spoofing(event_client, payload):
         await promote_organizer(session, account['email'])
         await promote_organizer(session, account['email'])  # Idempotent promotion.
     assert (await client.get('/users/me')).json()['is_organizer'] is True
+    await connection.execute(Venue.__table__.update().where(Venue.id == UUID(payload['venue_id'])).values(owner_id=UUID(registered.json()['id'])))
     # Reuse the pre-promotion JWT: permission is read from PostgreSQL per request.
     created = await client.post('/events', json={**payload, 'organizer_id': str(uuid4())})
     assert created.status_code == 201

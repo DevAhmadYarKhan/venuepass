@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Integer, String, Text, UniqueConstraint, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -14,6 +14,7 @@ class Event(Base):
 
     __tablename__ = "events"
     __table_args__ = (
+        UniqueConstraint("id", "venue_id", name="uq_events_id_venue"),
         CheckConstraint("capacity > 0", name="ck_events_capacity_positive"),
         CheckConstraint(
             "ends_at IS NULL OR ends_at > starts_at", name="ck_events_end_after_start"
@@ -27,7 +28,7 @@ class Event(Base):
     )
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
-    venue: Mapped[str] = mapped_column(String(255))
+    venue_id: Mapped[UUID] = mapped_column(ForeignKey("venues.id", ondelete="RESTRICT"), index=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     capacity: Mapped[int] = mapped_column(Integer)
@@ -76,6 +77,7 @@ class Seat(Base):
 
     __tablename__ = "seats"
     __table_args__ = (
+        UniqueConstraint("id", "venue_id", name="uq_seats_id_venue"),
         UniqueConstraint("venue_id", "section", "row", "number", name="uq_seats_identity"),
         CheckConstraint("number > 0", name="ck_seats_number_positive"),
     )
@@ -84,3 +86,24 @@ class Seat(Base):
     section: Mapped[str] = mapped_column(String(100))
     row: Mapped[str] = mapped_column(String(100))
     number: Mapped[int] = mapped_column(Integer)
+
+
+class VenueOrganizer(Base):
+    """An owner's continuing grant for an organizer to create events at a venue."""
+
+    __tablename__ = "venue_organizers"
+    venue_id: Mapped[UUID] = mapped_column(ForeignKey("venues.id", ondelete="CASCADE"), primary_key=True)
+    organizer_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+
+class EventSeat(Base):
+    """Frozen membership; composite keys ensure event and seat share a venue."""
+
+    __tablename__ = "event_seats"
+    __table_args__ = (
+        ForeignKeyConstraint(["event_id", "venue_id"], ["events.id", "events.venue_id"], ondelete="RESTRICT", name="fk_event_seats_event_venue"),
+        ForeignKeyConstraint(["seat_id", "venue_id"], ["seats.id", "seats.venue_id"], ondelete="RESTRICT", name="fk_event_seats_seat_venue"),
+    )
+    event_id: Mapped[UUID] = mapped_column(primary_key=True)
+    seat_id: Mapped[UUID] = mapped_column(primary_key=True)
+    venue_id: Mapped[UUID] = mapped_column(nullable=False)

@@ -5,8 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.dependencies import Organizer, Session
-from app.errors import EventNotFound
-from app.models import Event
+from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired
+from app.models import Event, Seat
+from app.schemas.seats import SeatRead
 from app.schemas.events import EventCreate, EventRead
 from app.services import events
 
@@ -16,7 +17,14 @@ router = APIRouter(prefix="/events", tags=["events"])
 @router.post("", response_model=EventRead, status_code=status.HTTP_201_CREATED)
 async def create_event(payload: EventCreate, session: Session, organizer: Organizer) -> Event:
     """Persist a validated event and return its generated fields."""
-    return await events.create_event(session, payload, organizer_id=organizer.id)
+    try:
+        return await events.create_event(session, payload, organizer_id=organizer.id)
+    except VenueNotFound as exc:
+        raise HTTPException(404, "Venue not found") from exc
+    except (VenueAccessDenied, OrganizerRequired) as exc:
+        raise HTTPException(403, "Organizer is not authorized for this venue") from exc
+    except EmptyVenue as exc:
+        raise HTTPException(409, "Venue has no seats") from exc
 
 
 @router.get("", response_model=list[EventRead])
@@ -36,3 +44,15 @@ async def get_event(event_id: UUID, session: Session) -> Event:
         return await events.get_event(session, event_id)
     except EventNotFound as exc:
         raise HTTPException(404, detail="Event not found") from exc
+
+
+@router.get("/{event_id}/seats", response_model=list[SeatRead])
+async def list_event_seats(event_id: UUID, session: Session,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[Seat]:
+    """Browse seats offered by this event without implying booking availability."""
+    try:
+        return await events.list_event_seats(session, event_id, limit=limit, offset=offset)
+    except EventNotFound as exc:
+        raise HTTPException(404, "Event not found") from exc

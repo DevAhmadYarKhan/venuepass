@@ -57,7 +57,11 @@ uv run alembic current
 ```
 
 Revision `20260927_0001` creates events; `20260927_0002` adds users. Apply both
-with `uv run alembic upgrade head`; `current` reports `20260928_0005` as the head.
+with `uv run alembic upgrade head`; `current` reports `20260928_0006` as the head.
+Revision `20260928_0006` links events to venues and adds organizer grants and fixed
+seat membership. It refuses to upgrade if legacy events exist: those records need
+an explicit venue mapping, rather than a guessed match or deletion. Downgrade
+restores event venue text from venue names and removes grants and seat membership.
 Revision `20260928_0005` adds physical venue seats without modifying existing data.
 Revision `20260928_0004` adds venues and venue-manager permission, preserving existing
 users and events. Downgrading that revision removes venue records and the new flag.
@@ -80,8 +84,10 @@ environment variable with its URL when running migration commands.
 ## Events API
 
 `POST /events` creates an event and returns HTTP 201 with its UUID, submitted
-fields, the authenticated user’s `organizer_id`, and database-generated `created_at`. `name` and `venue` are trimmed and
-must contain 1–255 characters. `capacity` must be an integer from 1 to 2147483647.
+fields, the authenticated user’s `organizer_id`, and database-generated `created_at`.
+`name` is trimmed and must contain 1–255 characters. Supply `venue_id` as a UUID.
+Capacity is calculated from all venue seats when the event is created. Supplying
+legacy `venue` or `capacity` input fields returns HTTP 422.
 `starts_at` must include a timezone and be in the future. Optional `ends_at` must
 include a timezone and be strictly later than `starts_at`; omitted or null means
 no fixed finish time. `description` is optional. Invalid input returns HTTP 422.
@@ -92,7 +98,7 @@ Choose future dates when trying this example:
 curl -X POST http://127.0.0.1:8000/events \
   -H 'Authorization: Bearer REPLACE_WITH_ORGANIZER_TOKEN' \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Python meetup","venue":"Main hall","description":"An evening of talks","starts_at":"2099-10-01T18:00:00Z","ends_at":"2099-10-01T20:00:00Z","capacity":50}'
+  -d '{"name":"Python meetup","venue_id":"REPLACE_WITH_VENUE_UUID","description":"An evening of talks","starts_at":"2099-10-01T18:00:00Z","ends_at":"2099-10-01T20:00:00Z"}'
 
 curl 'http://127.0.0.1:8000/events?limit=20&offset=0'
 curl 'http://127.0.0.1:8000/events/REPLACE_WITH_EVENT_UUID'
@@ -201,8 +207,8 @@ curl 'http://127.0.0.1:8000/venues?limit=20&offset=0'
 curl 'http://127.0.0.1:8000/venues/REPLACE_WITH_VENUE_UUID'
 ```
 
-Editing, deletion, shared staff access, and event-to-venue relationships
-are deferred. Events continue to use their existing free-text venue field.
+Venue editing, deletion, and shared staff access remain deferred. Events reference
+venues through `venue_id`; seats referenced by event membership are protected from deletion.
 
 ## Venue seats
 
@@ -236,3 +242,38 @@ Venues with seats cannot be deleted while those seats reference them.
 Seats describe physical locations, not event availability. Editing, deletion,
 layout generation, prices, and booking remain deferred. The concurrency test uses
 independent committed transactions and cleans up its own seats, venue, and user.
+
+## Venue authorization and event seat membership
+
+A venue owner with organizer permission can create events at their own venue.
+Other organizers need an explicit grant. Owners with current venue-manager
+permission manage these grants:
+
+- `PUT /venues/{venue_id}/organizers/{organizer_id}` grants ongoing access. Repeated
+  grants return HTTP 204. The target must be an existing organizer (409 otherwise).
+- `DELETE /venues/{venue_id}/organizers/{organizer_id}` revokes future creation
+  access, returning 204 even when no grant exists. It does not remove old events.
+- `GET /venues/{venue_id}/organizers` returns an array of explicit organizer UUIDs,
+  ordered by UUID, with `limit` default 20 (1–100) and nonnegative `offset` default 0.
+
+These endpoints return 401 without valid authentication, 403 for missing manager
+permission or ownership, and 404 for missing resources. Owners have implicit event
+creation access but are not automatically included in the explicit grant list.
+Current organizer permission is always required, even with an existing grant.
+
+Event creation rejects unauthorized venue use with 403, missing venues with 404,
+and venues without seats with 409. It stores the event, capacity, and all current
+venue seat memberships in one transaction. Grants, revocations, seat additions,
+and event creation acquire the same venue row lock, so simultaneous changes take
+effect in lock-acquisition order. Creating an event does not reserve a time slot;
+scheduling conflicts are not checked, and `ends_at` remains optional.
+
+`GET /events/{event_id}/seats` publicly lists the event's fixed seat membership,
+using the same fields and section/row/number ordering as venue seats. `limit`
+defaults to 100 (1–500), with nonnegative `offset` defaulting to 0. Missing events
+return 404. Adding venue seats later does not change existing event membership or
+capacity. This endpoint does not report booking availability.
+
+Typical workflow: create a venue, add seats, grant organizer access when needed,
+then create an event with that venue's UUID. Seat subsets, pricing, reservations,
+and idempotency keys remain deferred.

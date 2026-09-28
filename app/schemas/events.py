@@ -18,11 +18,16 @@ class EventCreate(BaseModel):
 
     name: EventLabel
     description: str | None = None
-    venue: EventLabel
+    venue_id: UUID
     starts_at: AwareDatetime
     ends_at: AwareDatetime | None = None
-    # Strict integers reject booleans/fractions; the upper bound fits PostgreSQL INTEGER.
-    capacity: Annotated[int, Field(strict=True, gt=0, le=2_147_483_647)]
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_fields(cls, value):
+        """Fail explicitly when clients still supply venue text or capacity."""
+        if isinstance(value, dict) and ({"venue", "capacity"} & value.keys()):
+            raise ValueError("Use venue_id; capacity is derived from venue seats")
+        return value
 
     @model_validator(mode="after")
     def validate_times(self) -> Self:
@@ -43,7 +48,7 @@ class EventRead(BaseModel):
     organizer_id: UUID
     name: str
     description: str | None
-    venue: str
+    venue_id: UUID
     starts_at: datetime
     ends_at: datetime | None
     capacity: int

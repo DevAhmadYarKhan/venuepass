@@ -31,3 +31,15 @@ class VenueOwnershipRequired(Exception):
 
 class DuplicateSeat(Exception):
     """The batch contains a repeated or already-existing seat identity."""
+
+
+class VenueAccessDenied(Exception):
+    """The organizer lacks the venue owner's authorization."""
+
+
+class OrganizerRequired(Exception):
+    """The target account does not currently have organizer permission."""
+
+
+class EmptyVenue(Exception):
+    """An event cannot be created without physical seats."""

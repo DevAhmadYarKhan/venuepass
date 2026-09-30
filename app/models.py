@@ -107,3 +107,32 @@ class EventSeat(Base):
     event_id: Mapped[UUID] = mapped_column(primary_key=True)
     seat_id: Mapped[UUID] = mapped_column(primary_key=True)
     venue_id: Mapped[UUID] = mapped_column(nullable=False)
+
+
+class Reservation(Base):
+    """Confirmed booking and its successful retry identity, committed together."""
+
+    __tablename__ = "reservations"
+    __table_args__ = (
+        UniqueConstraint("id", "event_id", name="uq_reservations_id_event"),
+        UniqueConstraint("user_id", "event_id", "idempotency_key", name="uq_reservations_retry"),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReservationSeat(Base):
+    """A unique claim to an event seat, constrained to the booking's event."""
+
+    __tablename__ = "reservation_seats"
+    __table_args__ = (
+        UniqueConstraint("event_id", "seat_id", name="uq_reservation_seats_event_seat"),
+        ForeignKeyConstraint(["reservation_id", "event_id"], ["reservations.id", "reservations.event_id"], ondelete="RESTRICT", name="fk_reservation_seats_reservation"),
+        ForeignKeyConstraint(["event_id", "seat_id"], ["event_seats.event_id", "event_seats.seat_id"], ondelete="RESTRICT", name="fk_reservation_seats_membership"),
+    )
+    reservation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    seat_id: Mapped[UUID] = mapped_column(primary_key=True)
+    event_id: Mapped[UUID] = mapped_column(nullable=False)

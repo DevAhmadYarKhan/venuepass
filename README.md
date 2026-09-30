@@ -2,8 +2,7 @@
 
 Event ticket reservation API built with Python 3.14, FastAPI, async SQLAlchemy,
 PostgreSQL, Alembic, and uv. Supports health checking, event creation, and event
-browsing, plus local user registration and JWT authentication. Ticket reservations
-are not implemented yet.
+browsing, plus local user registration and JWT authentication. Authenticated users can reserve event seats with safe retries and double-booking protection.
 
 ## Application structure
 
@@ -57,7 +56,9 @@ uv run alembic current
 ```
 
 Revision `20260927_0001` creates events; `20260927_0002` adds users. Apply both
-with `uv run alembic upgrade head`; `current` reports `20260928_0006` as the head.
+with `uv run alembic upgrade head`; `current` reports `20260928_0007` as the head.
+Revision `20260928_0007` adds reservations and unique seat claims while preserving
+existing records. Downgrading it removes bookings, including successful retry keys.
 Revision `20260928_0006` links events to venues and adds organizer grants and fixed
 seat membership. It refuses to upgrade if legacy events exist: those records need
 an explicit venue mapping, rather than a guessed match or deletion. Downgrade
@@ -240,7 +241,7 @@ Existing venues without seats return an empty array; unknown venues return 404.
 Venues with seats cannot be deleted while those seats reference them.
 
 Seats describe physical locations, not event availability. Editing, deletion,
-layout generation, prices, and booking remain deferred. The concurrency test uses
+layout generation and prices remain deferred. The concurrency test uses
 independent committed transactions and cleans up its own seats, venue, and user.
 
 ## Venue authorization and event seat membership
@@ -272,8 +273,54 @@ scheduling conflicts are not checked, and `ends_at` remains optional.
 using the same fields and section/row/number ordering as venue seats. `limit`
 defaults to 100 (1–500), with nonnegative `offset` defaulting to 0. Missing events
 return 404. Adding venue seats later does not change existing event membership or
-capacity. This endpoint does not report booking availability.
+capacity. Each event seat now includes `is_available`, true only when unbooked
+and the event has not started. It never exposes who booked the seat. Availability
+is informational: booking creation checks it again inside its transaction.
 
 Typical workflow: create a venue, add seats, grant organizer access when needed,
-then create an event with that venue's UUID. Seat subsets, pricing, reservations,
-and idempotency keys remain deferred.
+then create an event with that venue's UUID. Seat subsets and pricing remain deferred.
+
+## Confirmed reservations
+
+Any authenticated user can book seats; organizer or venue-manager permission is
+not required. Multiple reservations per user and event are allowed. Every booking
+is confirmed immediately, without payment or expiry.
+
+```bash
+curl -X POST http://127.0.0.1:8000/events/EVENT_UUID/reservations \
+  -H 'Authorization: Bearer USER_TOKEN' \
+  -H 'Idempotency-Key: unique-booking-request-1' \
+  -H 'Content-Type: application/json' \
+  -d '{"seat_ids":["SEAT_UUID_1","SEAT_UUID_2"]}'
+curl -H 'Authorization: Bearer USER_TOKEN' \
+  'http://127.0.0.1:8000/users/me/reservations?limit=20&offset=0'
+curl -H 'Authorization: Bearer USER_TOKEN' \
+  'http://127.0.0.1:8000/reservations/RESERVATION_UUID'
+```
+
+Creation accepts 1–20 distinct UUIDs and requires an `Idempotency-Key` containing
+1–128 printable, non-whitespace ASCII characters. Response HTTP 201 contains `id`,
+`event_id`, `user_id`, `seat_ids` sorted by UUID, and `created_at`. The key is never
+returned. Ownership comes from authentication, not submitted input.
+
+Keys are scoped to the user and event and retained for the booking's lifetime.
+Retry the same key and seat set (in any order) to recover the original HTTP 201
+response, even after the event starts. A different seat set with the same successful
+key returns 409. Failed requests do not consume their keys. Use a new key for each
+new intended booking, and retain the original key when retrying an uncertain result.
+
+The service locks the event row, checks successful retries, then checks the current
+UTC time, fixed seat membership, and existing bookings. At or after the start time,
+new bookings return 409. Booked seats also return 409; seats outside the event and
+invalid inputs return 422; missing events return 404; unauthenticated requests
+return 401. The entire booking, seat claims, and retry identity commit together.
+A database uniqueness constraint also prevents duplicate event-seat claims.
+
+Reservation retrieval is owner-only: other users' reservation IDs return the same
+404 as missing IDs. History returns only the current user's bookings, newest first,
+with descending UUID as a tie-breaker. `limit` defaults to 20 (1–100); `offset`
+defaults to 0 and must be nonnegative. No organizer endpoint exposes customer bookings.
+
+Cancellation, payment, temporary holds, expiry, and editing remain deferred. Tests
+cover simultaneous seat conflicts and same-key requests using independent database
+transactions and observed lock waits; their committed test records are cleaned up.

@@ -1,13 +1,15 @@
 """Event persistence and browsing, independent of HTTP routing."""
 
 from uuid import UUID
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired
-from app.models import Event, EventSeat, Seat, User, VenueOrganizer
+from app.models import Event, EventSeat, Seat, User, VenueOrganizer, ReservationSeat
 from app.services.venues import lock_venue
 from app.schemas.events import EventCreate
+from app.schemas.seats import EventSeatRead
 
 
 async def create_event(session: AsyncSession, payload: EventCreate, *, organizer_id: UUID) -> Event:
@@ -52,10 +54,16 @@ async def get_event(session: AsyncSession, event_id: UUID) -> Event:
     return event
 
 
-async def list_event_seats(session: AsyncSession, event_id: UUID, *, limit: int, offset: int) -> list[Seat]:
-    """Read frozen membership rather than the venue's potentially expanded layout."""
-    await get_event(session, event_id)
-    result = await session.scalars(select(Seat).join(EventSeat, EventSeat.seat_id == Seat.id).where(
+async def list_event_seats(session: AsyncSession, event_id: UUID, *, limit: int, offset: int) -> list[EventSeatRead]:
+    """Read membership and booking state together; creation still rechecks availability."""
+    event = await get_event(session, event_id)
+    booked = select(ReservationSeat.seat_id).where(
+        ReservationSeat.event_id == event_id, ReservationSeat.seat_id == Seat.id
+    ).exists()
+    rows = await session.execute(select(Seat, booked.label("booked")).join(EventSeat, EventSeat.seat_id == Seat.id).where(
         EventSeat.event_id == event_id
     ).order_by(Seat.section, Seat.row, Seat.number).limit(limit).offset(offset))
-    return list(result)
+    upcoming = event.starts_at > datetime.now(timezone.utc)
+    return [EventSeatRead(id=seat.id, venue_id=seat.venue_id, section=seat.section,
+        row=seat.row, number=seat.number, is_available=upcoming and not occupied)
+        for seat, occupied in rows]

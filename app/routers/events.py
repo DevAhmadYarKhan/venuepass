@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.dependencies import Organizer, Session
 from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired
-from app.models import Event, Seat
-from app.schemas.seats import SeatRead
+from app.models import Event
+from app.schemas.seats import EventSeatRead
 from app.schemas.events import EventCreate, EventRead
 from app.services import events
 
@@ -46,12 +46,12 @@ async def get_event(event_id: UUID, session: Session) -> Event:
         raise HTTPException(404, detail="Event not found") from exc
 
 
-@router.get("/{event_id}/seats", response_model=list[SeatRead])
+@router.get("/{event_id}/seats", response_model=list[EventSeatRead])
 async def list_event_seats(event_id: UUID, session: Session,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
-) -> list[Seat]:
-    """Browse seats offered by this event without implying booking availability."""
+) -> list[EventSeatRead]:
+    """Browse fixed event seats with current public availability."""
     try:
         return await events.list_event_seats(session, event_id, limit=limit, offset=offset)
     except EventNotFound as exc:

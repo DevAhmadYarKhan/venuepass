@@ -27,3 +27,9 @@ class SeatRead(SeatCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     venue_id: UUID
+
+
+class EventSeatRead(SeatRead):
+    """Public availability without exposing who booked a seat."""
+
+    is_available: bool

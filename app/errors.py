@@ -43,3 +43,15 @@ class OrganizerRequired(Exception):
 
 class EmptyVenue(Exception):
     """An event cannot be created without physical seats."""
+
+
+class ReservationNotFound(Exception):
+    """No reservation is visible to the requesting user."""
+
+
+class InvalidReservationSeats(Exception):
+    """One or more requested seats are not in the event's fixed membership."""
+
+
+class BookingConflict(Exception):
+    """The event, seats, or retry key conflict with a new booking."""

@@ -109,6 +109,31 @@ curl 'http://127.0.0.1:8000/events/REPLACE_WITH_EVENT_UUID'
 events. `limit` defaults to 20 (range 1–100); `offset` defaults to 0 and must be
 nonnegative. `GET /events/{id}` returns one event, HTTP 404 for an unknown UUID,
 or HTTP 422 for a malformed UUID. Responses always include nullable `ends_at`.
+Event listing accepts optional filters, combined with AND before pagination:
+
+| Parameter | Behavior |
+| --- | --- |
+| `q` | Case-insensitive literal substring of the name; trimmed, 1–255 characters |
+| `venue_id` | Only events at the supplied venue UUID |
+| `starts_from` | Inclusive start-time lower bound, with a timezone |
+| `starts_before` | Exclusive start-time upper bound, with a timezone |
+| `upcoming_only` | When true, starts strictly after current UTC time; defaults to false |
+
+Search treats `%` and `_` as literal characters, not wildcards. Invalid filters,
+including empty search text or `starts_from >= starts_before`, return HTTP 422.
+No matches (including an unknown venue UUID) return an empty array. Supplying no
+filters preserves the existing listing behavior; all responses use the same fields.
+
+```bash
+curl --get 'http://127.0.0.1:8000/events' \
+  --data-urlencode 'q=python' \
+  --data-urlencode 'upcoming_only=true'
+curl --get 'http://127.0.0.1:8000/events' \
+  --data-urlencode 'venue_id=REPLACE_WITH_VENUE_UUID' \
+  --data-urlencode 'starts_from=2099-10-01T00:00:00Z' \
+  --data-urlencode 'starts_before=2099-11-01T00:00:00Z'
+```
+
 Event browsing remains public. Creation requires a valid bearer token (HTTP 401
 otherwise) and organizer permission (HTTP 403 for ordinary users). Request input
 cannot override `organizer_id`.

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired
 from app.models import Event, EventSeat, Seat, User, VenueOrganizer, ReservationSeat
 from app.services.venues import lock_venue
-from app.schemas.events import EventCreate
+from app.schemas.events import EventCreate, EventFilters
 from app.schemas.seats import EventSeatRead
 
 
@@ -38,11 +38,28 @@ async def create_event(session: AsyncSession, payload: EventCreate, *, organizer
     return event
 
 
-async def list_events(session: AsyncSession, *, limit: int, offset: int) -> list[Event]:
-    """Include past events and break equal-start-time ties with UUID ordering."""
-    result = await session.scalars(
-        select(Event).order_by(Event.starts_at, Event.id).limit(limit).offset(offset)
-    )
+def utc_now() -> datetime:
+    """Supply an injectable wall-clock cutoff for upcoming-event discovery."""
+    return datetime.now(timezone.utc)
+
+
+async def list_events(session: AsyncSession, *, filters: EventFilters) -> list[Event]:
+    """Combine filters before pagination and break equal start-time ties with UUIDs."""
+    query = select(Event)
+    if filters.q is not None:
+        # Escape LIKE metacharacters so user input is a literal substring, not a pattern.
+        query = query.where(Event.name.icontains(filters.q, autoescape=True))
+    if filters.venue_id is not None:
+        query = query.where(Event.venue_id == filters.venue_id)
+    if filters.starts_from is not None:
+        query = query.where(Event.starts_at >= filters.starts_from)
+    if filters.starts_before is not None:
+        query = query.where(Event.starts_at < filters.starts_before)
+    if filters.upcoming_only:
+        # Capture the cutoff once; an event at this exact instant is already started.
+        query = query.where(Event.starts_at > utc_now())
+    result = await session.scalars(query.order_by(Event.starts_at, Event.id)
+        .limit(filters.limit).offset(filters.offset))
     return list(result)
 
 

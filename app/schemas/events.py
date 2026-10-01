@@ -53,3 +53,23 @@ class EventRead(BaseModel):
     ends_at: datetime | None
     capacity: int
     created_at: datetime
+
+
+class EventFilters(BaseModel):
+    """Validate optional discovery filters directly from URL query parameters."""
+
+    q: EventLabel | None = Field(default=None, description="Case-insensitive literal substring of the event name")
+    venue_id: UUID | None = Field(default=None, description="Only events at this venue")
+    starts_from: AwareDatetime | None = Field(default=None, description="Inclusive event start-time lower bound; timezone required")
+    starts_before: AwareDatetime | None = Field(default=None, description="Exclusive event start-time upper bound; timezone required")
+    upcoming_only: bool = Field(default=False, description="Only events starting strictly after the current UTC time")
+    limit: int = Field(default=20, ge=1, le=100, description="Maximum number of matching events")
+    offset: int = Field(default=0, ge=0, description="Matching events to skip")
+
+    @model_validator(mode="after")
+    def validate_range(self) -> Self:
+        """Reject empty or reversed ranges while allowing either bound on its own."""
+        if self.starts_from is not None and self.starts_before is not None:
+            if self.starts_from >= self.starts_before:
+                raise ValueError("starts_from must be before starts_before")
+        return self

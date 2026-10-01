@@ -8,7 +8,7 @@ from app.dependencies import Organizer, Session
 from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired
 from app.models import Event
 from app.schemas.seats import EventSeatRead
-from app.schemas.events import EventCreate, EventRead
+from app.schemas.events import EventCreate, EventFilters, EventRead
 from app.services import events
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -30,11 +30,10 @@ async def create_event(payload: EventCreate, session: Session, organizer: Organi
 @router.get("", response_model=list[EventRead])
 async def list_events(
     session: Session,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    filters: Annotated[EventFilters, Query()],
 ) -> list[Event]:
-    """Browse all events, including past ones, with deterministic pagination."""
-    return await events.list_events(session, limit=limit, offset=offset)
+    """Browse publicly with optional combined filters and deterministic pagination."""
+    return await events.list_events(session, filters=filters)
 
 
 @router.get("/{event_id}", response_model=EventRead)

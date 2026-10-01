@@ -56,7 +56,7 @@ uv run alembic current
 ```
 
 Revision `20260927_0001` creates events; `20260927_0002` adds users. Apply both
-with `uv run alembic upgrade head`; `current` reports `20260928_0007` as the head.
+with `uv run alembic upgrade head`; `current` reports `20261002_0009` as the head.
 Revision `20260928_0007` adds reservations and unique seat claims while preserving
 existing records. Downgrading it removes bookings, including successful retry keys.
 Revision `20260928_0006` links events to venues and adds organizer grants and fixed
@@ -106,9 +106,9 @@ curl 'http://127.0.0.1:8000/events/REPLACE_WITH_EVENT_UUID'
 ```
 
 `GET /events` returns an array ordered by start time, then UUID, including past
-events. `limit` defaults to 20 (range 1–100); `offset` defaults to 0 and must be
+events but excluding cancelled events by default. `limit` defaults to 20 (range 1–100); `offset` defaults to 0 and must be
 nonnegative. `GET /events/{id}` returns one event, HTTP 404 for an unknown UUID,
-or HTTP 422 for a malformed UUID. Responses always include nullable `ends_at`.
+or HTTP 422 for a malformed UUID. Responses always include nullable `ends_at` and `cancelled_at`.
 Event listing accepts optional filters, combined with AND before pagination:
 
 | Parameter | Behavior |
@@ -117,6 +117,7 @@ Event listing accepts optional filters, combined with AND before pagination:
 | `venue_id` | Only events at the supplied venue UUID |
 | `starts_from` | Inclusive start-time lower bound, with a timezone |
 | `starts_before` | Exclusive start-time upper bound, with a timezone |
+| `include_cancelled` | Include cancelled events; defaults to false |
 | `upcoming_only` | When true, starts strictly after current UTC time; defaults to false |
 
 Search treats `%` and `_` as literal characters, not wildcards. Invalid filters,
@@ -325,7 +326,7 @@ curl -H 'Authorization: Bearer USER_TOKEN' \
 
 Creation accepts 1–20 distinct UUIDs and requires an `Idempotency-Key` containing
 1–128 printable, non-whitespace ASCII characters. Response HTTP 201 contains `id`,
-`event_id`, `user_id`, `seat_ids` sorted by UUID, `created_at`, and nullable `cancelled_at`. The key is never
+`event_id`, `user_id`, `seat_ids` sorted by UUID, `created_at`, nullable `cancelled_at`, and nullable `cancellation_reason`. The key is never
 returned. Ownership comes from authentication, not submitted input.
 
 Keys are scoped to the user and event and retained for the booking's lifetime.
@@ -364,3 +365,39 @@ cancellation migration refuses to discard existing cancellation history.
 Payment, temporary holds, expiry, and editing remain deferred. Tests
 cover simultaneous seat conflicts and same-key requests using independent database
 transactions and observed lock waits; their committed test records are cleaned up.
+
+## Organizer event cancellation
+
+`POST /events/{event_id}/cancel` requires a bearer token and current organizer
+permission. Only the owning organizer can cancel, even if their venue access has
+been revoked. Venue owners and other authorized organizers cannot cancel someone
+else's event. No body or idempotency key is required.
+
+```bash
+curl -X POST http://127.0.0.1:8000/events/EVENT_UUID/cancel \
+  -H 'Authorization: Bearer ORGANIZER_TOKEN'
+curl 'http://127.0.0.1:8000/events?include_cancelled=true'
+```
+
+First cancellation is allowed strictly before the event starts. It returns HTTP
+200 with the event's UTC `cancelled_at`. Repeated cancellation preserves that
+value and succeeds even after the start. Missing events return 404, insufficient
+permission or ownership returns 403, unauthenticated requests return 401, and
+first cancellation at or after the start returns 409.
+
+The transaction cancels active reservations with `cancellation_reason` set to
+`event_cancelled` and releases their active seat claims using the same timestamp.
+Earlier customer cancellations keep their timestamps and `customer` reasons.
+Active bookings have null cancellation timestamps and reasons. Events, bookings,
+seat history, and original idempotency keys are retained.
+
+New bookings for cancelled events return 409. Matching original creation retries
+still return HTTP 201 with the original booking's current cancelled state. All
+seats of a cancelled event report unavailable. Public listings hide cancelled
+events by default; `include_cancelled=true` includes them under the other filters.
+Direct event lookup remains available; `upcoming_only` still refers to start time.
+
+Booking creation, customer cancellation, and event cancellation lock the same
+row in `events`, so concurrent operations take effect in lock-acquisition order.
+Migration downgrade refuses to erase event cancellation history. Restoration,
+notifications, and refunds are not implemented.

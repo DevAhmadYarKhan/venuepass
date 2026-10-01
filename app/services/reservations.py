@@ -28,7 +28,7 @@ async def serialize_many(session: AsyncSession, bookings: list[Reservation]) -> 
     # Normalize cancellation timestamps so immediate responses and database-backed
     # retries have identical JSON regardless of PostgreSQL session timezone.
     return [ReservationRead(id=b.id, event_id=b.event_id, user_id=b.user_id,
-        seat_ids=seats[b.id], created_at=b.created_at, cancelled_at=b.cancelled_at.astimezone(timezone.utc) if b.cancelled_at else None) for b in bookings]
+        seat_ids=seats[b.id], created_at=b.created_at, cancellation_reason=b.cancellation_reason, cancelled_at=b.cancelled_at.astimezone(timezone.utc) if b.cancelled_at else None) for b in bookings]
 
 
 async def create_reservation(session: AsyncSession, event_id: UUID, user_id: UUID, seat_ids: list[UUID], key: str) -> ReservationRead:
@@ -48,6 +48,8 @@ async def create_reservation(session: AsyncSession, event_id: UUID, user_id: UUI
                 raise BookingConflict("Idempotency key already used for different seats")
             await session.commit()
             return result
+        if event.cancelled_at is not None:
+            raise BookingConflict("Event has been cancelled")
         if event.starts_at <= utc_now():
             raise BookingConflict("Event has already started")
         members = set(await session.scalars(select(EventSeat.seat_id).where(
@@ -112,6 +114,7 @@ async def cancel_reservation(session: AsyncSession, reservation_id: UUID, user_i
             if event.starts_at <= now:
                 raise BookingConflict("Event has already started")
             booking.cancelled_at = now
+            booking.cancellation_reason = "customer"
             await session.execute(update(ReservationSeat).where(
                 ReservationSeat.reservation_id == booking.id
             ).values(released_at=now))

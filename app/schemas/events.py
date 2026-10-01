@@ -5,7 +5,7 @@ from typing import Annotated, Self
 from uuid import UUID
 
 from pydantic import (
-    AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator,
+    AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_serializer, model_validator,
 )
 
 EventLabel = Annotated[
@@ -51,6 +51,13 @@ class EventRead(BaseModel):
     venue_id: UUID
     starts_at: datetime
     ends_at: datetime | None
+    cancelled_at: datetime | None
+
+    @field_serializer("cancelled_at")
+    def serialize_cancellation(self, value: datetime | None) -> datetime | None:
+        """Keep first responses and subsequent reads identical across database timezones."""
+        return value.astimezone(timezone.utc) if value is not None else None
+
     capacity: int
     created_at: datetime
 
@@ -63,6 +70,7 @@ class EventFilters(BaseModel):
     starts_from: AwareDatetime | None = Field(default=None, description="Inclusive event start-time lower bound; timezone required")
     starts_before: AwareDatetime | None = Field(default=None, description="Exclusive event start-time upper bound; timezone required")
     upcoming_only: bool = Field(default=False, description="Only events starting strictly after the current UTC time")
+    include_cancelled: bool = Field(default=False, description="Include cancelled events in the filtered results")
     limit: int = Field(default=20, ge=1, le=100, description="Maximum number of matching events")
     offset: int = Field(default=0, ge=0, description="Matching events to skip")
 

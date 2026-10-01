@@ -31,6 +31,8 @@ class Event(Base):
     venue_id: Mapped[UUID] = mapped_column(ForeignKey("venues.id", ondelete="RESTRICT"), index=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Cancellation retains the event and its immutable booking history.
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     capacity: Mapped[int] = mapped_column(Integer)
     # PostgreSQL supplies creation time consistently for every database writer.
     created_at: Mapped[datetime] = mapped_column(
@@ -114,6 +116,12 @@ class Reservation(Base):
 
     __tablename__ = "reservations"
     __table_args__ = (
+        CheckConstraint(
+            "(cancelled_at IS NULL AND cancellation_reason IS NULL) OR "
+            "(cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL AND "
+            "cancellation_reason IN ('customer', 'event_cancelled'))",
+            name="ck_reservations_cancellation",
+        ),
         UniqueConstraint("id", "event_id", name="uq_reservations_id_event"),
         UniqueConstraint("user_id", "event_id", "idempotency_key", name="uq_reservations_retry"),
     )
@@ -121,6 +129,8 @@ class Reservation(Base):
     event_id: Mapped[UUID] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"))
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     idempotency_key: Mapped[str] = mapped_column(String(128))
+    # A reason distinguishes customer withdrawal from organizer cancellation.
+    cancellation_reason: Mapped[str | None] = mapped_column(String(32))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

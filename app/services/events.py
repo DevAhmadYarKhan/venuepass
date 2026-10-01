@@ -2,11 +2,11 @@
 
 from uuid import UUID
 from datetime import datetime, timezone
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired
-from app.models import Event, EventSeat, Seat, User, VenueOrganizer, ReservationSeat
+from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict
+from app.models import Event, EventSeat, Seat, User, VenueOrganizer, Reservation, ReservationSeat
 from app.services.venues import lock_venue
 from app.schemas.events import EventCreate, EventFilters
 from app.schemas.seats import EventSeatRead
@@ -46,6 +46,8 @@ def utc_now() -> datetime:
 async def list_events(session: AsyncSession, *, filters: EventFilters) -> list[Event]:
     """Combine filters before pagination and break equal start-time ties with UUIDs."""
     query = select(Event)
+    if not filters.include_cancelled:
+        query = query.where(Event.cancelled_at.is_(None))
     if filters.q is not None:
         # Escape LIKE metacharacters so user input is a literal substring, not a pattern.
         query = query.where(Event.name.icontains(filters.q, autoescape=True))
@@ -81,7 +83,41 @@ async def list_event_seats(session: AsyncSession, event_id: UUID, *, limit: int,
     rows = await session.execute(select(Seat, booked.label("booked")).join(EventSeat, EventSeat.seat_id == Seat.id).where(
         EventSeat.event_id == event_id
     ).order_by(Seat.section, Seat.row, Seat.number).limit(limit).offset(offset))
-    upcoming = event.starts_at > datetime.now(timezone.utc)
+    upcoming = event.cancelled_at is None and event.starts_at > datetime.now(timezone.utc)
     return [EventSeatRead(id=seat.id, venue_id=seat.venue_id, section=seat.section,
         row=seat.row, number=seat.number, is_available=upcoming and not occupied)
         for seat, occupied in rows]
+
+
+async def cancel_event(session: AsyncSession, event_id: UUID, *, organizer_id: UUID) -> Event:
+    """Cancel the event and active bookings atomically while preserving prior history."""
+    try:
+        # Booking creation and both cancellation flows lock this same event row.
+        # Ownership, current state, and the clock are checked after any lock wait.
+        event = await session.scalar(select(Event).where(Event.id == event_id).with_for_update())
+        if event is None:
+            raise EventNotFound()
+        organizer = await session.get(User, organizer_id, populate_existing=True)
+        if organizer is None or not organizer.is_organizer:
+            raise OrganizerRequired()
+        if event.organizer_id != organizer_id:
+            raise EventOwnershipRequired()
+        if event.cancelled_at is None:
+            now = utc_now()
+            if event.starts_at <= now:
+                raise EventCancellationConflict("Event has already started")
+            event.cancelled_at = now
+            # Bulk updates avoid loading every customer booking into memory. Never
+            # overwrite an earlier customer's cancellation reason or timestamp.
+            await session.execute(update(Reservation).where(
+                Reservation.event_id == event_id, Reservation.cancelled_at.is_(None)
+            ).values(cancelled_at=now, cancellation_reason="event_cancelled"))
+            await session.execute(update(ReservationSeat).where(
+                ReservationSeat.event_id == event_id, ReservationSeat.released_at.is_(None)
+            ).values(released_at=now))
+        await session.commit()
+        await session.refresh(event)
+        return event
+    except Exception:
+        await session.rollback()
+        raise

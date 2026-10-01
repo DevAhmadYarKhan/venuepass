@@ -1,7 +1,7 @@
 """Reservation input and public booking details, excluding retry keys."""
 
 from datetime import datetime
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -31,3 +31,4 @@ class ReservationRead(BaseModel):
     seat_ids: list[UUID]
     created_at: datetime
     cancelled_at: datetime | None
+    cancellation_reason: Literal["customer", "event_cancelled"] | None

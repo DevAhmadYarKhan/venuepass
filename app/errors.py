@@ -55,3 +55,11 @@ class InvalidReservationSeats(Exception):
 
 class BookingConflict(Exception):
     """The event, seats, or retry key conflict with a new booking."""
+
+
+class EventOwnershipRequired(Exception):
+    """Only the owning organizer may cancel an event."""
+
+
+class EventCancellationConflict(Exception):
+    """An event has already started and cannot be cancelled for the first time."""

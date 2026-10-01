@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.dependencies import Organizer, Session
-from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired
+from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict
 from app.models import Event
 from app.schemas.seats import EventSeatRead
 from app.schemas.events import EventCreate, EventFilters, EventRead
@@ -55,3 +55,16 @@ async def list_event_seats(event_id: UUID, session: Session,
         return await events.list_event_seats(session, event_id, limit=limit, offset=offset)
     except EventNotFound as exc:
         raise HTTPException(404, "Event not found") from exc
+
+
+@router.post("/{event_id}/cancel", response_model=EventRead)
+async def cancel_event(event_id: UUID, session: Session, organizer: Organizer) -> Event:
+    """Let the owning organizer cancel without requiring current venue access."""
+    try:
+        return await events.cancel_event(session, event_id, organizer_id=organizer.id)
+    except EventNotFound as exc:
+        raise HTTPException(404, "Event not found") from exc
+    except (OrganizerRequired, EventOwnershipRequired) as exc:
+        raise HTTPException(403, "Event owner with organizer permission required") from exc
+    except EventCancellationConflict as exc:
+        raise HTTPException(409, str(exc)) from exc

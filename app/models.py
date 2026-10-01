@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Integer, String, Text, UniqueConstraint, false, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, UniqueConstraint, false, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -121,18 +121,21 @@ class Reservation(Base):
     event_id: Mapped[UUID] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"))
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     idempotency_key: Mapped[str] = mapped_column(String(128))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ReservationSeat(Base):
-    """A unique claim to an event seat, constrained to the booking's event."""
+    """An active or released claim to an event seat, constrained to the booking's event."""
 
     __tablename__ = "reservation_seats"
     __table_args__ = (
-        UniqueConstraint("event_id", "seat_id", name="uq_reservation_seats_event_seat"),
+        # Released rows remain history; only active claims must be unique.
+        Index("uq_reservation_seats_event_seat", "event_id", "seat_id", unique=True, postgresql_where=text("released_at IS NULL")),
         ForeignKeyConstraint(["reservation_id", "event_id"], ["reservations.id", "reservations.event_id"], ondelete="RESTRICT", name="fk_reservation_seats_reservation"),
         ForeignKeyConstraint(["event_id", "seat_id"], ["event_seats.event_id", "event_seats.seat_id"], ondelete="RESTRICT", name="fk_reservation_seats_membership"),
     )
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reservation_id: Mapped[UUID] = mapped_column(primary_key=True)
     seat_id: Mapped[UUID] = mapped_column(primary_key=True)
     event_id: Mapped[UUID] = mapped_column(nullable=False)

@@ -30,3 +30,4 @@ class ReservationRead(BaseModel):
     user_id: UUID
     seat_ids: list[UUID]
     created_at: datetime
+    cancelled_at: datetime | None

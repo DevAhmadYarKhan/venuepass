@@ -58,7 +58,8 @@ async def list_event_seats(session: AsyncSession, event_id: UUID, *, limit: int,
     """Read membership and booking state together; creation still rechecks availability."""
     event = await get_event(session, event_id)
     booked = select(ReservationSeat.seat_id).where(
-        ReservationSeat.event_id == event_id, ReservationSeat.seat_id == Seat.id
+        ReservationSeat.event_id == event_id, ReservationSeat.seat_id == Seat.id,
+        ReservationSeat.released_at.is_(None)
     ).exists()
     rows = await session.execute(select(Seat, booked.label("booked")).join(EventSeat, EventSeat.seat_id == Seat.id).where(
         EventSeat.event_id == event_id

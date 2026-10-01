@@ -42,5 +42,16 @@ async def list_reservations(session: Session, user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ReservationRead]:
-    """Browse the current user's confirmed bookings."""
+    """Browse the current user's bookings, including cancelled history."""
     return await reservations.list_reservations(session, user.id, limit=limit, offset=offset)
+
+
+@router.post("/reservations/{reservation_id}/cancel", response_model=ReservationRead)
+async def cancel_reservation(reservation_id: UUID, session: Session, user: CurrentUser) -> ReservationRead:
+    """Cancel the owner's complete booking, including repeated cancellation requests."""
+    try:
+        return await reservations.cancel_reservation(session, reservation_id, user.id)
+    except ReservationNotFound as exc:
+        raise HTTPException(404, "Reservation not found") from exc
+    except BookingConflict as exc:
+        raise HTTPException(409, str(exc)) from exc

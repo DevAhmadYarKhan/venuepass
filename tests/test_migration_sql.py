@@ -54,3 +54,44 @@ async def test_rendered_guard_checks_existing_events(migration_sql):
                 await transaction.rollback()
     finally:
         await engine.dispose()
+
+
+@pytest.fixture(scope='module')
+def cancellation_downgrade_sql():
+    """Render the cancellation rollback without requiring a live database."""
+    return subprocess.run(
+        [sys.executable, '-m', 'alembic', 'downgrade', '20261001_0008:20260928_0007', '--sql'],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, check=True,
+    ).stdout
+
+
+def test_cancellation_offline_rendering(migration_sql, cancellation_downgrade_sql):
+    """Offline upgrade preserves active uniqueness; rollback guards precede drops."""
+    assert 'CREATE UNIQUE INDEX uq_reservation_seats_event_seat' in migration_sql
+    assert 'WHERE released_at IS NULL' in migration_sql
+    assert cancellation_downgrade_sql.index('Cannot downgrade while cancellation history exists') < cancellation_downgrade_sql.index('DROP INDEX')
+
+
+@pytest.mark.integration
+async def test_cancellation_downgrade_guard(cancellation_downgrade_sql):
+    """Exercise both history markers against temporary tables without touching bookings."""
+    url = str(Settings().test_database_url)
+    assert make_url(url).database == 'venuepass_db_test'
+    engine = create_async_engine(url)
+    start = cancellation_downgrade_sql.index('DO $$')
+    guard = cancellation_downgrade_sql[start:cancellation_downgrade_sql.index('$$;', start) + 3]
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(text('CREATE TEMP TABLE reservations (cancelled_at timestamptz) ON COMMIT DROP'))
+            await connection.execute(text('CREATE TEMP TABLE reservation_seats (released_at timestamptz) ON COMMIT DROP'))
+            await connection.execute(text(guard))
+            for table, column in [('reservations', 'cancelled_at'), ('reservation_seats', 'released_at')]:
+                # Fixed test identifiers only; each marker independently prevents history loss.
+                await connection.execute(text(f'INSERT INTO {table} ({column}) VALUES (now())'))
+                with pytest.raises(DBAPIError, match='Cannot downgrade while cancellation history exists'):
+                    async with connection.begin_nested():
+                        await connection.execute(text(guard))
+                await connection.execute(text(f'DELETE FROM {table}'))
+    finally:
+        await engine.dispose()

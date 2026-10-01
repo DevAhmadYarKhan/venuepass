@@ -300,7 +300,7 @@ curl -H 'Authorization: Bearer USER_TOKEN' \
 
 Creation accepts 1–20 distinct UUIDs and requires an `Idempotency-Key` containing
 1–128 printable, non-whitespace ASCII characters. Response HTTP 201 contains `id`,
-`event_id`, `user_id`, `seat_ids` sorted by UUID, and `created_at`. The key is never
+`event_id`, `user_id`, `seat_ids` sorted by UUID, `created_at`, and nullable `cancelled_at`. The key is never
 returned. Ownership comes from authentication, not submitted input.
 
 Keys are scoped to the user and event and retained for the booking's lifetime.
@@ -314,13 +314,28 @@ UTC time, fixed seat membership, and existing bookings. At or after the start ti
 new bookings return 409. Booked seats also return 409; seats outside the event and
 invalid inputs return 422; missing events return 404; unauthenticated requests
 return 401. The entire booking, seat claims, and retry identity commit together.
-A database uniqueness constraint also prevents duplicate event-seat claims.
+A partial unique database index also prevents duplicate active event-seat claims.
 
 Reservation retrieval is owner-only: other users' reservation IDs return the same
 404 as missing IDs. History returns only the current user's bookings, newest first,
 with descending UUID as a tie-breaker. `limit` defaults to 20 (1–100); `offset`
 defaults to 0 and must be nonnegative. No organizer endpoint exposes customer bookings.
 
-Cancellation, payment, temporary holds, expiry, and editing remain deferred. Tests
+`POST /reservations/{reservation_id}/cancel` cancels the entire reservation and
+returns HTTP 200 with `cancelled_at` set. It requires authentication but no request
+body or idempotency key. Only the reservation owner can cancel it; other users and
+missing reservations receive 404. Active reservations can be cancelled strictly
+before the event starts; at or after that time cancellation returns 409. Repeated
+cancellation returns the same timestamp, even after the event starts.
+
+Cancellation retains the reservation, original key, and seat history. All its seat
+claims receive `released_at` in the same transaction and become available again.
+Retrying the original creation request still returns HTTP 201 with the original
+reservation's current cancelled state; it never books the seats again. Use a new
+key for a new booking. Booking and cancellation acquire the same event row lock,
+so concurrent requests take effect in lock-acquisition order. Downgrading the
+cancellation migration refuses to discard existing cancellation history.
+
+Payment, temporary holds, expiry, and editing remain deferred. Tests
 cover simultaneous seat conflicts and same-key requests using independent database
 transactions and observed lock waits; their committed test records are cleaned up.

@@ -70,7 +70,7 @@ async def test_booking_retries_ownership_history_and_availability(booking_data):
     response = await book(client, users[0], events[0], seats[:2])
     assert response.status_code == 201
     original = response.json()
-    assert set(original) == {'id', 'event_id', 'user_id', 'seat_ids', 'created_at'}
+    assert set(original) == {'id', 'event_id', 'user_id', 'seat_ids', 'created_at', 'cancelled_at'}
     assert original['seat_ids'] == sorted(str(s) for s in seats[:2])
     retry = await book(client, users[0], events[0], list(reversed(seats[:2])))
     assert retry.status_code == 201 and retry.json() == original

@@ -1,8 +1,8 @@
-"""Atomic confirmed bookings with event-scoped serialization and retry recovery."""
+"""Atomic booking and cancellation with event-scoped locking and retry recovery."""
 
 from datetime import datetime, timezone
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import BookingConflict, EventNotFound, InvalidReservationSeats, ReservationNotFound
@@ -25,8 +25,10 @@ async def serialize_many(session: AsyncSession, bookings: list[Reservation]) -> 
     ).order_by(ReservationSeat.seat_id))
     for reservation_id, seat_id in rows:
         seats[reservation_id].append(seat_id)
+    # Normalize cancellation timestamps so immediate responses and database-backed
+    # retries have identical JSON regardless of PostgreSQL session timezone.
     return [ReservationRead(id=b.id, event_id=b.event_id, user_id=b.user_id,
-        seat_ids=seats[b.id], created_at=b.created_at) for b in bookings]
+        seat_ids=seats[b.id], created_at=b.created_at, cancelled_at=b.cancelled_at.astimezone(timezone.utc) if b.cancelled_at else None) for b in bookings]
 
 
 async def create_reservation(session: AsyncSession, event_id: UUID, user_id: UUID, seat_ids: list[UUID], key: str) -> ReservationRead:
@@ -54,7 +56,8 @@ async def create_reservation(session: AsyncSession, event_id: UUID, user_id: UUI
         if members != set(seat_ids):
             raise InvalidReservationSeats()
         booked = await session.scalar(select(ReservationSeat.seat_id).where(
-            ReservationSeat.event_id == event_id, ReservationSeat.seat_id.in_(seat_ids)
+            ReservationSeat.event_id == event_id, ReservationSeat.seat_id.in_(seat_ids),
+            ReservationSeat.released_at.is_(None)
         ).limit(1))
         if booked is not None:
             raise BookingConflict("One or more seats are already booked")
@@ -90,3 +93,32 @@ async def list_reservations(session: AsyncSession, user_id: UUID, *, limit: int,
         Reservation.created_at.desc(), Reservation.id.desc()
     ).limit(limit).offset(offset)))
     return await serialize_many(session, bookings)
+
+
+async def cancel_reservation(session: AsyncSession, reservation_id: UUID, user_id: UUID) -> ReservationRead:
+    """Release every claim atomically while retaining the original request and seats."""
+    try:
+        booking = await session.scalar(select(Reservation).where(
+            Reservation.id == reservation_id, Reservation.user_id == user_id
+        ))
+        if booking is None:
+            raise ReservationNotFound()
+        # Use the booking event's lock, matching creation's lock order. Reload the
+        # booking afterward because another cancellation may have completed while waiting.
+        event = await session.scalar(select(Event).where(Event.id == booking.event_id).with_for_update())
+        await session.refresh(booking)
+        if booking.cancelled_at is None:
+            now = utc_now()
+            if event.starts_at <= now:
+                raise BookingConflict("Event has already started")
+            booking.cancelled_at = now
+            await session.execute(update(ReservationSeat).where(
+                ReservationSeat.reservation_id == booking.id
+            ).values(released_at=now))
+            await session.flush()
+        result = (await serialize_many(session, [booking]))[0]
+        await session.commit()
+        return result
+    except Exception:
+        await session.rollback()
+        raise

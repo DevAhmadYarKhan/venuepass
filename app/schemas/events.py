@@ -81,3 +81,20 @@ class EventFilters(BaseModel):
             if self.starts_from >= self.starts_before:
                 raise ValueError("starts_from must be before starts_before")
         return self
+
+
+class EventUpdate(BaseModel):
+    """Validate a partial detail edit, preserving the meaning of omitted fields."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: EventLabel | None = None
+    description: str | None = None
+
+    @model_validator(mode="after")
+    def validate_patch(self) -> Self:
+        """Require an actual field and allow null only for clearing the description."""
+        if not self.model_fields_set:
+            raise ValueError("Supply name or description")
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("name cannot be null")
+        return self

@@ -5,10 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.dependencies import Organizer, Session
-from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict
+from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict, EventEditConflict
 from app.models import Event
 from app.schemas.seats import EventSeatRead
-from app.schemas.events import EventCreate, EventFilters, EventRead
+from app.schemas.events import EventCreate, EventFilters, EventRead, EventUpdate
 from app.services import events
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -67,4 +67,17 @@ async def cancel_event(event_id: UUID, session: Session, organizer: Organizer) -
     except (OrganizerRequired, EventOwnershipRequired) as exc:
         raise HTTPException(403, "Event owner with organizer permission required") from exc
     except EventCancellationConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.patch("/{event_id}", response_model=EventRead)
+async def update_event(event_id: UUID, payload: EventUpdate, session: Session, organizer: Organizer) -> Event:
+    """Update an owned upcoming event's name or description without changing bookings."""
+    try:
+        return await events.update_event(session, event_id, payload, organizer_id=organizer.id)
+    except EventNotFound as exc:
+        raise HTTPException(404, "Event not found") from exc
+    except (OrganizerRequired, EventOwnershipRequired) as exc:
+        raise HTTPException(403, "Event owner with organizer permission required") from exc
+    except EventEditConflict as exc:
         raise HTTPException(409, str(exc)) from exc

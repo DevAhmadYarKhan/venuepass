@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict
+from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict, EventEditConflict
 from app.models import Event, EventSeat, Seat, User, VenueOrganizer, Reservation, ReservationSeat
 from app.services.venues import lock_venue
-from app.schemas.events import EventCreate, EventFilters
+from app.schemas.events import EventCreate, EventFilters, EventUpdate
 from app.schemas.seats import EventSeatRead
 
 
@@ -115,6 +115,40 @@ async def cancel_event(session: AsyncSession, event_id: UUID, *, organizer_id: U
             await session.execute(update(ReservationSeat).where(
                 ReservationSeat.event_id == event_id, ReservationSeat.released_at.is_(None)
             ).values(released_at=now))
+        await session.commit()
+        await session.refresh(event)
+        return event
+    except Exception:
+        await session.rollback()
+        raise
+
+
+async def list_organizer_events(session: AsyncSession, organizer_id: UUID, *, limit: int, offset: int) -> list[Event]:
+    """Return owned events including historical ones, newest first with stable ties."""
+    result = await session.scalars(select(Event).where(Event.organizer_id == organizer_id)
+        .order_by(Event.created_at.desc(), Event.id.desc()).limit(limit).offset(offset))
+    return list(result)
+
+
+async def update_event(session: AsyncSession, event_id: UUID, payload: EventUpdate, *, organizer_id: UUID) -> Event:
+    """Edit only descriptive fields after acquiring the event row used by cancellation."""
+    try:
+        event = await session.scalar(select(Event).where(Event.id == event_id).with_for_update())
+        if event is None:
+            raise EventNotFound()
+        organizer = await session.get(User, organizer_id, populate_existing=True)
+        if organizer is None or not organizer.is_organizer:
+            raise OrganizerRequired()
+        if event.organizer_id != organizer_id:
+            raise EventOwnershipRequired()
+        if event.cancelled_at is not None:
+            raise EventEditConflict("Event has been cancelled")
+        # Read wall-clock time after any lock wait, rather than before the transaction.
+        if event.starts_at <= utc_now():
+            raise EventEditConflict("Event has already started")
+        # Explicit null clears the description; omitted fields never overwrite stored values.
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            setattr(event, field, value)
         await session.commit()
         await session.refresh(event)
         return event

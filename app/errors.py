@@ -58,8 +58,12 @@ class BookingConflict(Exception):
 
 
 class EventOwnershipRequired(Exception):
-    """Only the owning organizer may cancel an event."""
+    """Only the owning organizer may change an event."""
 
 
 class EventCancellationConflict(Exception):
     """An event has already started and cannot be cancelled for the first time."""
+
+
+class EventEditConflict(Exception):
+    """Cancelled or already-started events cannot have their details edited."""

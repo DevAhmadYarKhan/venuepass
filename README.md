@@ -401,3 +401,34 @@ Booking creation, customer cancellation, and event cancellation lock the same
 row in `events`, so concurrent operations take effect in lock-acquisition order.
 Migration downgrade refuses to erase event cancellation history. Restoration,
 notifications, and refunds are not implemented.
+
+## Organizer event management
+
+`GET /users/me/events` requires authentication and current organizer permission.
+It lists only the caller's events, including past and cancelled events, ordered
+newest-created first with descending UUID as a tie-breaker. `limit` defaults to 20
+(1–100), and `offset` defaults to 0 (nonnegative). An empty list returns HTTP 200.
+
+`PATCH /events/{event_id}` updates the owning organizer's event name and/or
+description and returns HTTP 200 with the complete event response. The name is
+trimmed and must contain 1–255 characters; it cannot be null. Omitted fields stay
+unchanged, while `description: null` clears the description. At least one field
+must be supplied. Unknown fields, including dates, venue, capacity, ownership,
+and cancellation state, return HTTP 422. Descriptions retain creation's string
+behavior and may be empty.
+
+```bash
+curl 'http://127.0.0.1:8000/users/me/events?limit=20&offset=0' \
+  -H 'Authorization: Bearer ORGANIZER_TOKEN'
+curl -X PATCH http://127.0.0.1:8000/events/EVENT_UUID \
+  -H 'Authorization: Bearer ORGANIZER_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Updated event name","description":null}'
+```
+
+Editing requires current organizer permission and event ownership, but not current
+venue access. Unauthenticated requests return 401, missing permission or ownership
+returns 403, and missing events return 404. Cancelled events and events at or after
+their start time reject editing with HTTP 409. Editing locks the same event row as
+cancellation and checks event state and the clock after any lock wait. It changes
+neither the schedule nor seats or reservations, and commits supplied fields together.

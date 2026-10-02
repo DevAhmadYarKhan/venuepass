@@ -459,3 +459,10 @@ VENUEPASS_BROWSER_TESTS=1 uv run pytest tests/test_demo_browser.py
 Ordinary `uv run pytest` skips browser checks unless enabled. Browser tests serve
 the actual frontend and mock API responses, so they do not modify a database;
 the PostgreSQL integration suite verifies backend behavior separately.
+
+The customer demo supports account registration, login, logout, and displaying the
+current account. Registration leads to an explicit login. Access tokens live only
+in JavaScript memory, never browser storage; refreshing logs you out. Logout
+clears the local session but does not revoke an already-issued server token.
+Expired authenticated requests prompt for login again. Passwords are cleared from
+the form after submission and are not included in URLs or logs.

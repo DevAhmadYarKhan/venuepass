@@ -1,7 +1,9 @@
 /** Public event discovery and label-based seat browsing using the real API. */
 import { request, allPages } from "./api.js";
 
-export const $ = id => document.getElementById(id);
+import { $, element, dateLabel, status } from "./ui.js";
+import "./auth.js";
+
 const pageSize = 6;
 let offset = 0;
 let browseVersion = 0;
@@ -9,25 +11,6 @@ let detailVersion = 0;
 let lastDetailButton;
 let venues = new Map();
 let appliedFilters = new URLSearchParams({ upcoming_only: "true" });
-
-/** Use textContent for every API-provided value to avoid interpreting user content as HTML. */
-export function element(tag, text, className = "") {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  if (className) node.className = className;
-  return node;
-}
-
-/** Present dates in the viewer's locale, with the timezone shown explicitly. */
-export function dateLabel(value) {
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-    + ` (${Intl.DateTimeFormat().resolvedOptions().timeZone})`;
-}
-
-export function status(id, text, error = false) {
-  $(id).textContent = text;
-  $(id).classList.toggle("error", error);
-}
 
 /** Convert local form dates to absolute instants; URLSearchParams handles timezone escaping. */
 function filterQuery() {

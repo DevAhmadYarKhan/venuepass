@@ -23,3 +23,7 @@ button { padding: 11px 18px; border: 1px solid var(--green); border-radius: 7px;
 @media (max-width: 800px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }.check { grid-column: auto; }.event-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .filters, .event-grid { grid-template-columns: 1fr; }.intro { padding-top: 30px; }.detail { padding: 18px; }.section-heading .muted { margin-bottom: 12px; } }
 [hidden] { display: none !important; }
+/* Authentication controls and the native modal share the site's form vocabulary. */
+.header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }.header-actions #identity { max-width: 240px; overflow-wrap: anywhere; }
+dialog { width: min(460px, 92vw); border: 1px solid var(--line); border-radius: 14px; padding: 24px; color: var(--ink); background: white; }dialog::backdrop { background: #102d27aa; }dialog h2 { margin: 0; }dialog form { display: grid; gap: 16px; }.auth-modes { display: flex; gap: 8px; margin: 22px 0; }.auth-modes [aria-pressed="true"] { background: var(--green); color: white; }
+@media (max-width: 600px) { .site-header { align-items: flex-start; gap: 12px; padding-block: 18px; }.header-actions { max-width: 68%; gap: 8px; }.header-actions button { padding: 8px 10px; font-size: .85rem; } }

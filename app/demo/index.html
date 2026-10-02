@@ -10,8 +10,9 @@
 </head>
 <body>
   <!-- A same-origin demo keeps API calls and browser deployment straightforward. -->
-  <header class="site-header"><a class="brand" href="./">Venue<span>Pass</span></a><a href="/docs">API docs ↗</a></header>
+  <header class="site-header"><a class="brand" href="./">Venue<span>Pass</span></a><div class="header-actions"><span id="identity" class="muted"></span><button id="account" type="button" class="secondary">Log in / register</button><button id="logout" type="button" class="secondary" hidden>Log out</button><a href="/docs">API docs ↗</a></div></header>
   <main>
+    <p id="auth-status" role="status" aria-live="polite"></p>
     <section class="intro"><p class="eyebrow">Good nights start here</p><h1>Find your event.<br>Pick your place.</h1><p>Explore what's on and see the seats available at each event.</p></section>
     <section aria-labelledby="browse-heading">
       <div class="section-heading"><h2 id="browse-heading">Explore events</h2><span class="muted">Live availability · no payments</span></div>
@@ -34,6 +35,19 @@
       <p id="seat-status" role="status" aria-live="polite"></p><div id="seat-list"></div>
     </section>
   </main>
+  <!-- Authentication is a native modal with explicit labels and memory-only sessions. -->
+  <dialog id="auth-dialog" aria-labelledby="auth-title">
+    <div class="section-heading"><h2 id="auth-title">Welcome back</h2><button id="close-auth" type="button" class="secondary">Close</button></div>
+    <div class="auth-modes"><button id="login-mode" type="button" class="secondary" aria-pressed="true">Log in</button><button id="register-mode" type="button" class="secondary" aria-pressed="false">Create account</button></div>
+    <form id="auth-form" method="post">
+      <label>Email<input id="auth-email" name="email" type="email" autocomplete="username" required></label>
+      <label>Password<input id="auth-password" name="password" type="password" maxlength="128" minlength="1" autocomplete="current-password" aria-describedby="password-help" required></label>
+      <p id="password-help" class="muted">Enter your account password.</p>
+      <button id="auth-submit" type="submit">Log in</button>
+    </form>
+    <p id="auth-form-status" role="status" aria-live="polite"></p>
+    <p class="muted">Refreshing the page logs you out. No payment information is collected.</p>
+  </dialog>
   <footer>VenuePass customer demo · <a href="/docs">Explore the API</a></footer>
 </body>
 </html>

@@ -184,3 +184,78 @@ def test_pagination_uses_applied_filters_and_venues_do_not_block(page, demo_url)
     fulfill(venue_requests[0], [{'id': 'venue-1', 'name': 'Late venue'}])
     expect(page.locator('.venue-name').first).to_have_text('Late venue')
     expect(page.locator('#page-label')).to_have_text('Page 2')
+
+
+def auth_routes(page):
+    """Provide a stable identity while retaining real browser credential submission."""
+    page.route('**/auth/login', lambda route: fulfill(route, {'access_token': 'demo-token', 'expires_in': 1800, 'token_type': 'bearer'}))
+    page.route('**/users/me', lambda route: fulfill(route, {'id': 'user-1', 'email': 'customer@example.com', 'is_organizer': False, 'is_venue_manager': False}))
+
+
+def login(page):
+    """Log in through labelled fields, not by injecting authentication state."""
+    page.locator('#account').click()
+    page.get_by_label('Email', exact=True).fill('customer@example.com')
+    page.get_by_label('Password', exact=True).fill('a sufficiently long password')
+    page.locator('#auth-submit').click()
+    expect(page.locator('#identity')).to_have_text('customer@example.com')
+
+
+def test_registration_login_logout_and_memory_only_session(page, demo_url):
+    """Registration leads to login and neither storage nor refresh preserves the token."""
+    browsing_routes(page)
+    auth_routes(page)
+    registrations = []
+    def register(route):
+        """Record only the transport shape, without retaining the password in test output."""
+        registrations.append((route.request.method, route.request.url))
+        fulfill(route, {'id': 'user-1', 'email': 'customer@example.com'}, 201)
+    page.route('**/auth/register', register)
+    page.goto(demo_url+'/demo/')
+    page.locator('#account').click()
+    page.locator('#register-mode').click()
+    page.get_by_label('Email', exact=True).fill('customer@example.com')
+    page.get_by_label('Password', exact=True).fill('a sufficiently long password')
+    page.locator('#auth-submit').click()
+    expect(page.locator('#auth-form-status')).to_contain_text('Account created. Log in')
+    assert registrations == [('POST', demo_url+'/auth/register')]
+    expect(page.locator('#auth-password')).to_have_value('')
+    expect(page.locator('#identity')).to_have_text('')
+    with page.expect_request(lambda request: request.url.endswith('/users/me')) as identity:
+        page.get_by_label('Password', exact=True).fill('a sufficiently long password')
+        page.locator('#auth-submit').click()
+    expect(page.locator('#identity')).to_have_text('customer@example.com')
+    assert identity.value.headers['authorization'] == 'Bearer demo-token'
+    assert page.evaluate('localStorage.length + sessionStorage.length') == 0
+    assert 'demo-token' not in page.url
+    page.locator('#logout').click()
+    expect(page.locator('#identity')).to_have_text('')
+    login(page)
+    page.reload()
+    expect(page.locator('#account')).to_have_text('Log in / register')
+    expect(page.locator('#identity')).to_have_text('')
+
+
+def test_invalid_credentials_and_expired_session(page, demo_url):
+    """Server errors clear passwords, and 401 prompts for a new login without stale identity."""
+    browsing_routes(page)
+    auth_routes(page)
+    page.route('**/auth/login', lambda route: fulfill(route, {'detail': 'Invalid authentication credentials'}, 401))
+    page.goto(demo_url+'/demo/')
+    page.locator('#account').click()
+    page.get_by_label('Email', exact=True).fill('customer@example.com')
+    page.get_by_label('Password', exact=True).fill('wrong password')
+    page.locator('#auth-submit').click()
+    expect(page.locator('#auth-form-status')).to_contain_text('Invalid authentication credentials')
+    expect(page.locator('#auth-password')).to_have_value('')
+    auth_routes(page)
+    page.get_by_label('Password', exact=True).fill('a sufficiently long password')
+    page.locator('#auth-submit').click()
+    expect(page.locator('#identity')).to_have_text('customer@example.com')
+    page.route('**/private', lambda route: fulfill(route, {'detail': 'Invalid authentication credentials'}, 401))
+    assert page.evaluate("async () => { const auth = await import('/demo/auth.js'); try { await auth.authRequest('/private'); } catch (e) { return e.status; } }") == 401
+    expect(page.locator('#identity')).to_have_text('')
+    expect(page.locator('#auth-status')).to_contain_text('session expired')
+    expect(page.locator('#auth-dialog')).to_be_visible()
+    page.keyboard.press('Escape')
+    expect(page.locator('#auth-dialog')).not_to_be_visible()

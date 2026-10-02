@@ -188,6 +188,7 @@ def test_pagination_uses_applied_filters_and_venues_do_not_block(page, demo_url)
 
 def auth_routes(page):
     """Provide a stable identity while retaining real browser credential submission."""
+    page.route('**/users/me/reservations?*', lambda route: fulfill(route, []))
     page.route('**/auth/login', lambda route: fulfill(route, {'access_token': 'demo-token', 'expires_in': 1800, 'token_type': 'bearer'}))
     page.route('**/users/me', lambda route: fulfill(route, {'id': 'user-1', 'email': 'customer@example.com', 'is_organizer': False, 'is_venue_manager': False}))
 

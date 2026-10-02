@@ -466,3 +466,45 @@ in JavaScript memory, never browser storage; refreshing logs you out. Logout
 clears the local session but does not revoke an already-issued server token.
 Expired authenticated requests prompt for login again. Passwords are cleared from
 the form after submission and are not included in URLs or logs.
+
+### Booking and managing reservations in the demo
+
+Log in, open an event, and select up to 20 available seats. Review the labelled
+selection and choose **Reserve selected seats**. Selection alone does not claim
+seats; a competing customer may book them first. A conflict refreshes availability
+and clears the selection so you can choose again. Successful booking also refreshes
+availability and your reservation history.
+
+Each intended booking gets a freshly generated idempotency key. If a response is
+lost, unreadable, times out, or reports a server error, the demo freezes that exact
+request and offers **Retry the same booking** with the same key and seats. It
+blocks new bookings until the original outcome is resolved. If authentication
+expires, log in as the original account and retry. A different account cannot
+reuse the pending request. Requests time out after 15 seconds.
+
+Keep the page open while a booking is unresolved: request keys and tokens live in
+memory, not browser storage. The browser warns before leaving with a pending
+booking. If you nevertheless reload or leave, inspect your reservation history
+before making another booking; the original request may already have succeeded.
+
+**My reservations** lists your bookings with pagination, event names, seat labels,
+and customer/organizer cancellation reasons. Public metadata is cached within the
+page, with UUID fallbacks if a lookup fails; private history clears on logout.
+Whole-reservation cancellation asks for confirmation, then refreshes history and
+availability. If its response is lost, retry cancellation of that same reservation.
+Cancelled or started events cannot accept new bookings. Retrying a cancelled
+booking's original creation request displays its cancelled state and never
+reactivates it.
+
+To include the real browser-to-PostgreSQL workflow in verification:
+
+```bash
+VENUEPASS_BROWSER_TESTS=1 uv run pytest
+```
+
+Most browser tests mock API responses to cover failure states deterministically.
+`tests/test_demo_real_browser.py` additionally starts the actual API against
+`venuepass_db_test`, seeds isolated credentials/events/seats, and cleans them up.
+It exercises a genuinely committed booking with a dropped response, recovery,
+a competing customer's seat conflict, customer cancellation, rebooking, and
+organizer event cancellation. No development database records are created.

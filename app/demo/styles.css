@@ -27,3 +27,8 @@ button { padding: 11px 18px; border: 1px solid var(--green); border-radius: 7px;
 .header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }.header-actions #identity { max-width: 240px; overflow-wrap: anywhere; }
 dialog { width: min(460px, 92vw); border: 1px solid var(--line); border-radius: 14px; padding: 24px; color: var(--ink); background: white; }dialog::backdrop { background: #102d27aa; }dialog h2 { margin: 0; }dialog form { display: grid; gap: 16px; }.auth-modes { display: flex; gap: 8px; margin: 22px 0; }.auth-modes [aria-pressed="true"] { background: var(--green); color: white; }
 @media (max-width: 600px) { .site-header { align-items: flex-start; gap: 12px; padding-block: 18px; }.header-actions { max-width: 68%; gap: 8px; }.header-actions button { padding: 8px 10px; font-size: .85rem; } }
+/* Selection is communicated with text, pressed state, and contrast, not color alone. */
+button.seat { color: var(--green); font-weight: 600; }button.seat.selected { background: var(--green); color: white; }button.seat.selected::after { content: ' ✓'; }button.seat:disabled { opacity: 1; }
+.selection { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 24px; }.selection button { margin: 8px 8px 0 0; }.pending { border: 2px solid #8b4b00; background: #fff6df; border-radius: 12px; padding: 20px; margin-block: 24px; }.pending h2 { margin-top: 0; }
+.reservation-card { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 24px; overflow-wrap: anywhere; }.reservation-card .badge { display: inline-block; }.reservation-card ul { padding-left: 20px; }#cancel-dialog button { margin: 6px 0; }
+@media (max-width: 520px) { .pagination { flex-wrap: wrap; gap: 10px; } }

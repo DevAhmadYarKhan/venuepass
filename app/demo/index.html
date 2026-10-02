@@ -28,11 +28,26 @@
       <div id="event-list" class="event-grid"></div>
       <nav class="pagination" aria-label="Event pages"><button id="previous" type="button" class="secondary" disabled>Previous</button><span id="page-label">Page 1</span><button id="next" type="button" class="secondary" disabled>Next</button></nav>
     </section>
+    <aside id="pending-booking" class="pending" aria-labelledby="pending-heading" hidden>
+      <h2 id="pending-heading">Resolve your booking request</h2><p id="pending-description"></p><button id="retry-booking" type="button">Retry the same booking</button>
+    </aside>
+    <p id="booking-status" role="status" aria-live="polite"></p>
     <section id="event-detail" class="detail" aria-labelledby="detail-heading" hidden>
       <div class="section-heading"><h2 id="detail-heading" tabindex="-1">Event details</h2><button id="close-detail" type="button" class="secondary">Close details</button></div>
       <div id="detail-copy"></div>
       <h3>Seats</h3><p class="muted">Seats are grouped by their labels. This is not a floor plan.</p>
       <p id="seat-status" role="status" aria-live="polite"></p><div id="seat-list"></div>
+      <section class="selection" aria-labelledby="selection-heading">
+        <h3 id="selection-heading">Review your selection</h3><p id="booking-help"></p>
+        <p id="selection-count" role="status" aria-live="polite">0 of 20 seats selected</p><ul id="selection"></ul>
+        <button id="booking-login" type="button" class="secondary">Log in / account</button>
+        <button id="reserve" type="button" disabled>Reserve selected seats</button>
+      </section>
+    </section>
+    <section aria-labelledby="history-heading">
+      <div class="section-heading"><h2 id="history-heading">My reservations</h2><button id="history-refresh" type="button" class="secondary" disabled>Refresh reservations</button></div>
+      <p id="history-status" role="status" aria-live="polite">Log in to view your reservations.</p><div id="history-list" class="event-grid"></div>
+      <nav class="pagination" aria-label="Reservation pages"><button id="history-previous" type="button" class="secondary" disabled>Previous reservations</button><span id="history-page">Page 1</span><button id="history-next" type="button" class="secondary" disabled>Next reservations</button></nav>
     </section>
   </main>
   <!-- Authentication is a native modal with explicit labels and memory-only sessions. -->
@@ -47,6 +62,11 @@
     </form>
     <p id="auth-form-status" role="status" aria-live="polite"></p>
     <p class="muted">Refreshing the page logs you out. No payment information is collected.</p>
+  </dialog>
+  <dialog id="cancel-dialog" aria-labelledby="cancel-title">
+    <h2 id="cancel-title">Cancel this reservation?</h2><p id="cancel-description"></p>
+    <button id="keep-reservation" type="button" class="secondary">Keep reservation / close</button>
+    <button id="confirm-cancel" type="button">Cancel reservation</button><p id="cancel-status" role="status" aria-live="polite"></p>
   </dialog>
   <footer>VenuePass customer demo · <a href="/docs">Explore the API</a></footer>
 </body>

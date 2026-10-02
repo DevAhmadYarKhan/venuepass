@@ -5,19 +5,26 @@ export class ApiError extends Error {
 
 /** Decode HTTP errors separately from network failures, which may have uncertain outcomes. */
 export async function request(path, options = {}) {
-  let response;
-  try { response = await fetch(path, options); }
-  catch { throw new ApiError("Cannot reach the server. Check your connection and try again."); }
-  let data;
-  try { data = await response.json(); }
-  catch { throw new ApiError("The server returned an unreadable response."); }
-  if (!response.ok) {
-    const message = Array.isArray(data.detail)
-      ? data.detail.map(error => `${error.loc.slice(1).join(".") || "Request"}: ${error.msg}`).join("; ")
-      : typeof data.detail === "string" ? data.detail : "The request could not be completed.";
-    throw new ApiError(message, response.status);
-  }
-  return data;
+  // Bound waits so a stalled connection eventually offers an idempotent retry.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    let response;
+    try { response = await fetch(path, { ...options, signal: controller.signal }); }
+    catch { throw new ApiError(controller.signal.aborted
+      ? "The request timed out. Check your connection and try again."
+      : "Cannot reach the server. Check your connection and try again."); }
+    let data;
+    try { data = await response.json(); }
+    catch { throw new ApiError("The server returned an unreadable response."); }
+    if (!response.ok) {
+      const message = Array.isArray(data.detail)
+        ? data.detail.map(error => `${error.loc.slice(1).join(".") || "Request"}: ${error.msg}`).join("; ")
+        : typeof data.detail === "string" ? data.detail : "The request could not be completed.";
+      throw new ApiError(message, response.status);
+    }
+    return data;
+  } finally { clearTimeout(timeout); }
 }
 
 /** Exhaust bounded API pages rather than truncating venues or larger seat layouts. */

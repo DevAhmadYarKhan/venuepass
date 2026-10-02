@@ -3,12 +3,14 @@ import { request, allPages } from "./api.js";
 
 import { $, element, dateLabel, status } from "./ui.js";
 import "./auth.js";
+import "./booking.js";
 
 const pageSize = 6;
 let offset = 0;
 let browseVersion = 0;
 let detailVersion = 0;
 let lastDetailButton;
+let currentEventId = null;
 let venues = new Map();
 let appliedFilters = new URLSearchParams({ upcoming_only: "true" });
 
@@ -60,12 +62,14 @@ async function browse() {
 }
 
 /** Fetch event and every seat page; late responses cannot replace a newer selection. */
-async function showEvent(id, button) {
+async function showEvent(id, button, focus = true) {
+  currentEventId = id;
+  window.dispatchEvent(new CustomEvent("eventloading", { detail: { id } }));
   const version = ++detailVersion;
   lastDetailButton = button;
   $("event-detail").hidden = false;
   $("detail-heading").textContent = "Event details";
-  $("detail-heading").focus();
+  if (focus) $("detail-heading").focus();
   $("detail-copy").replaceChildren();
   $("seat-list").replaceChildren();
   status("seat-status", "Loading event and seats…");
@@ -73,9 +77,10 @@ async function showEvent(id, button) {
     const [event, seats] = await Promise.all([request(`/events/${id}`), allPages(`/events/${id}/seats`, 500)]);
     if (version !== detailVersion) return;
     $("detail-heading").textContent = event.name;
-    $("detail-copy").append(element("p", dateLabel(event.starts_at)),
+    $("detail-copy").append(element("p", event.cancelled_at ? "This event has been cancelled." : new Date(event.starts_at) <= new Date() ? "This event has started." : "Upcoming event"), element("p", dateLabel(event.starts_at)),
       element("p", event.description || "No description provided."));
     renderSeats(seats);
+    window.dispatchEvent(new CustomEvent("eventloaded", { detail: { event, seats } }));
     status("seat-status", `${seats.filter(seat => seat.is_available).length} of ${seats.length} seats available. Availability can change.`);
   } catch (error) { if (version === detailVersion) status("seat-status", error.message, true); }
 }
@@ -91,7 +96,17 @@ function renderSeats(seats) {
   for (const group of groups.values()) {
     const block = element("div", undefined, "seat-group");
     const labels = element("div", undefined, "seats");
-    for (const seat of group.seats) labels.append(element("span", `${seat.number} · ${seat.is_available ? "available" : "unavailable"}`, `seat${seat.is_available ? "" : " unavailable"}`));
+    for (const seat of group.seats) {
+      const button = element("button", `${seat.number} · ${seat.is_available ? "available" : "unavailable"}`, `seat${seat.is_available ? "" : " unavailable"}`);
+      button.type = "button";
+      button.dataset.seatId = seat.id;
+      button.dataset.available = String(seat.is_available);
+      button.disabled = !seat.is_available;
+      button.setAttribute("aria-pressed", "false");
+      button.setAttribute("aria-label", `${seat.section}, Row ${seat.row}, Seat ${seat.number}: ${seat.is_available ? "available" : "unavailable"}`);
+      button.addEventListener("click", () => window.dispatchEvent(new CustomEvent("seat-toggle", { detail: seat })));
+      labels.append(button);
+    }
     block.append(element("h4", group.label), labels);
     $("seat-list").append(block);
   }
@@ -101,7 +116,10 @@ function renderSeats(seats) {
 $("filters").addEventListener("submit", event => { event.preventDefault(); appliedFilters = filterQuery(); offset = 0; browse(); });
 $("previous").addEventListener("click", () => { offset -= pageSize; browse(); });
 $("next").addEventListener("click", () => { offset += pageSize; browse(); });
-$("close-detail").addEventListener("click", () => { ++detailVersion; $("event-detail").hidden = true; lastDetailButton?.focus(); });
+$("close-detail").addEventListener("click", () => { ++detailVersion; currentEventId = null; window.dispatchEvent(new CustomEvent("eventloading")); $("event-detail").hidden = true; lastDetailButton?.focus(); });
+window.addEventListener("refresh-event", event => {
+  if (currentEventId === event.detail.id && !$("event-detail").hidden) showEvent(currentEventId, lastDetailButton, false);
+});
 
 /** Venue names enhance browsing, but an unavailable venue list must not block events. */
 function dateLabelVenue(id) { return venues.get(id)?.name || "Venue"; }

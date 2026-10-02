@@ -12,7 +12,7 @@ async def test_demo_assets_and_api_routes():
         database_url='postgresql+psycopg://unused:unused@127.0.0.1:1/unavailable'))
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         for path, content_type in [('/demo/', 'text/html'), ('/demo/styles.css', 'text/css'),
-                                   ('/demo/app.js', 'javascript'), ('/demo/api.js', 'javascript'), ('/demo/ui.js', 'javascript'), ('/demo/auth.js', 'javascript')]:
+                                   ('/demo/app.js', 'javascript'), ('/demo/api.js', 'javascript'), ('/demo/ui.js', 'javascript'), ('/demo/auth.js', 'javascript'), ('/demo/booking.js', 'javascript')]:
             response = await client.get(path)
             assert response.status_code == 200
             assert content_type in response.headers['content-type']

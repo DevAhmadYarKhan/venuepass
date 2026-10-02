@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173d35">
+  <title>VenuePass — find your next event</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <!-- A same-origin demo keeps API calls and browser deployment straightforward. -->
+  <header class="site-header"><a class="brand" href="./">Venue<span>Pass</span></a><a href="/docs">API docs ↗</a></header>
+  <main>
+    <section class="intro"><p class="eyebrow">Good nights start here</p><h1>Find your event.<br>Pick your place.</h1><p>Explore what's on and see the seats available at each event.</p></section>
+    <section aria-labelledby="browse-heading">
+      <div class="section-heading"><h2 id="browse-heading">Explore events</h2><span class="muted">Live availability · no payments</span></div>
+      <form id="filters" class="filters">
+        <label>Event name<input name="q" type="search" maxlength="255" placeholder="Search events"></label>
+        <label>Venue<select name="venue_id" id="venue-filter"><option value="">All venues</option></select></label>
+        <label>Starts from<input name="starts_from" type="datetime-local"></label>
+        <label>Starts before<input name="starts_before" type="datetime-local"></label>
+        <label class="check"><input name="upcoming_only" type="checkbox" checked>Upcoming only</label>
+        <button type="submit">Find events</button>
+      </form>
+      <p id="browse-status" role="status" aria-live="polite"></p>
+      <div id="event-list" class="event-grid"></div>
+      <nav class="pagination" aria-label="Event pages"><button id="previous" type="button" class="secondary" disabled>Previous</button><span id="page-label">Page 1</span><button id="next" type="button" class="secondary" disabled>Next</button></nav>
+    </section>
+    <section id="event-detail" class="detail" aria-labelledby="detail-heading" hidden>
+      <div class="section-heading"><h2 id="detail-heading" tabindex="-1">Event details</h2><button id="close-detail" type="button" class="secondary">Close details</button></div>
+      <div id="detail-copy"></div>
+      <h3>Seats</h3><p class="muted">Seats are grouped by their labels. This is not a floor plan.</p>
+      <p id="seat-status" role="status" aria-live="polite"></p><div id="seat-list"></div>
+    </section>
+  </main>
+  <footer>VenuePass customer demo · <a href="/docs">Explore the API</a></footer>
+</body>
+</html>

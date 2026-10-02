@@ -432,3 +432,30 @@ returns 403, and missing events return 404. Cancelled events and events at or af
 their start time reject editing with HTTP 409. Editing locks the same event row as
 cancellation and checks event state and the clock after any lock wait. It changes
 neither the schedule nor seats or reservations, and commits supplied fields together.
+
+## Customer demo
+
+Start the API as usual and open **http://127.0.0.1:8000/demo/**. The demo is served
+by FastAPI using HTML, CSS, and JavaScript; no frontend build or separate service
+is required. Swagger remains at `/docs`. All browser requests use the same origin.
+
+The public demo supports event-name, venue, start-date, and upcoming-only filters,
+event pagination, and seat availability grouped by section and row. Dates are
+shown in your browser's timezone; local date filters are converted to absolute
+instants before being submitted. Seat groups represent labels, not a floor plan.
+It fetches every seat page rather than omitting larger layouts.
+
+The demo reads existing API data and does not seed or reset the database. If there
+are no events, use Swagger and the documented organizer workflow to create a
+venue, seats, and a future event. Payments and seat holds are outside the demo.
+
+Browser checks use Playwright as development tooling. Install Chromium once:
+
+```bash
+uv run playwright install chromium
+VENUEPASS_BROWSER_TESTS=1 uv run pytest tests/test_demo_browser.py
+```
+
+Ordinary `uv run pytest` skips browser checks unless enabled. Browser tests serve
+the actual frontend and mock API responses, so they do not modify a database;
+the PostgreSQL integration suite verifies backend behavior separately.

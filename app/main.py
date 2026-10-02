@@ -1,10 +1,12 @@
 """Construct the FastAPI application and manage its database engine lifecycle."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import secrets
 
 from app.routers import auth, events, health, users, venues, seats, venue_access, reservations
@@ -44,6 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(health.router)
+    # Resolve assets from the module so serving the demo is independent of cwd.
+    app.mount("/demo", StaticFiles(directory=Path(__file__).parent / "demo", html=True), name="demo")
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):

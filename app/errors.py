@@ -67,3 +67,7 @@ class EventCancellationConflict(Exception):
 
 class EventEditConflict(Exception):
     """Cancelled or already-started events cannot have their details edited."""
+
+
+class EventCreationConflict(Exception):
+    """An initially valid event start time passed before insertion."""

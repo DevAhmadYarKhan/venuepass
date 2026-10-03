@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.dependencies import Organizer, Session
-from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict, EventEditConflict
+from app.errors import EventNotFound, VenueNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict, EventEditConflict, EventCreationConflict
 from app.models import Event
 from app.schemas.seats import EventSeatRead
 from app.schemas.events import EventCreate, EventFilters, EventRead, EventUpdate
@@ -25,6 +25,9 @@ async def create_event(payload: EventCreate, session: Session, organizer: Organi
         raise HTTPException(403, "Organizer is not authorized for this venue") from exc
     except EmptyVenue as exc:
         raise HTTPException(409, "Venue has no seats") from exc
+    except EventCreationConflict as exc:
+        # Valid input can become too late while waiting for venue changes.
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("", response_model=list[EventRead])

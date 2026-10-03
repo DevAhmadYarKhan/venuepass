@@ -5,11 +5,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.engine import make_url
 from app.config import Settings
+from app.database import get_session
+from app.main import create_app
 from app.models import Event, EventSeat, Seat, User, Venue, VenueOrganizer
 from app.security import create_access_token
 from app.schemas.events import EventCreate
@@ -186,4 +188,83 @@ async def test_event_creation_waits_for_venue_changes(operation,monkeypatch):
             await conn.execute(delete(Seat).where(Seat.venue_id==venue))
             await conn.execute(delete(Venue).where(Venue.id==venue))
             await conn.execute(delete(User).where(User.id.in_([owner,guest])))
+        await engine.dispose()
+
+
+@pytest.mark.parametrize('clock_offset', [-1, 0, 1])
+async def test_event_creation_rechecks_start_after_venue_lock(clock_offset, monkeypatch):
+    """A real HTTP lock wait must reject elapsed starts without saving any rows."""
+    url = str(Settings().test_database_url)
+    assert make_url(url).database == 'venuepass_db_test'
+    engine = create_async_engine(url)
+    owner, venue = uuid4(), uuid4()
+    payload = body(venue)
+    starts_at = datetime.fromisoformat(payload['starts_at'])
+    now = starts_at - timedelta(seconds=1)
+    monkeypatch.setattr(events, 'utc_now', lambda: now)
+    ready = asyncio.Event()
+    pid = None
+    task = None
+    app = create_app(Settings(database_url=url, jwt_secret=SECRET, _env_file=None))
+
+    async def tracked_session():
+        """Expose the actual request connection so the test observes its lock wait."""
+        nonlocal pid
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            pid = await session.scalar(text('SELECT pg_backend_pid()'))
+            ready.set()
+            yield session
+
+    app.dependency_overrides[get_session] = tracked_session
+    try:
+        # Independent committed setup allows the HTTP transaction to see these rows.
+        async with engine.begin() as conn:
+            await conn.execute(User.__table__.insert().values(
+                id=owner, email=f'{owner}@example.com', password_hash='unused',
+                is_organizer=True, is_venue_manager=True))
+            await conn.execute(Venue.__table__.insert().values(
+                id=venue, owner_id=owner, name='Clock race', address='Street'))
+            await conn.execute(Seat.__table__.insert().values(
+                venue_id=venue, section='Main', row='A', number=1))
+        async with app.router.lifespan_context(app):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+                authorize(client, owner)
+                async with engine.connect() as blocker:
+                    transaction = await blocker.begin()
+                    await blocker.execute(select(Venue.id).where(Venue.id == venue).with_for_update())
+                    task = asyncio.create_task(client.post('/events', json=payload))
+                    await asyncio.wait_for(ready.wait(), 5)
+                    # Observe contention rather than relying on an arbitrary sleep.
+                    async with asyncio.timeout(5):
+                        while not await blocker.scalar(text(
+                            'SELECT cardinality(pg_blocking_pids(:pid)) > 0'), {'pid': pid}):
+                            if task.done():
+                                pytest.fail('Event creation did not wait for the venue lock')
+                            await asyncio.sleep(.01)
+                    # Keep request validation genuinely future-dated, but advance
+                    # the service clock to either side of the exact start boundary.
+                    now = starts_at + timedelta(microseconds=clock_offset)
+                    await transaction.commit()
+                    response = await asyncio.wait_for(task, 5)
+        expected_count = int(clock_offset < 0)
+        assert response.status_code == (201 if expected_count else 409)
+        if not expected_count:
+            assert response.json() == {'detail': 'Event start time must be in the future'}
+        async with engine.connect() as conn:
+            assert await conn.scalar(select(func.count()).select_from(Event).where(
+                Event.venue_id == venue)) == expected_count
+            assert await conn.scalar(select(func.count()).select_from(EventSeat).where(
+                EventSeat.venue_id == venue)) == expected_count
+    finally:
+        # Committed concurrency fixtures require explicit cleanup even on failure.
+        if task is not None:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        async with engine.begin() as conn:
+            await conn.execute(delete(EventSeat).where(EventSeat.venue_id == venue))
+            await conn.execute(delete(Event).where(Event.venue_id == venue))
+            await conn.execute(delete(Seat).where(Seat.venue_id == venue))
+            await conn.execute(delete(Venue).where(Venue.id == venue))
+            await conn.execute(delete(User).where(User.id == owner))
         await engine.dispose()

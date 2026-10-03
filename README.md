@@ -92,6 +92,9 @@ legacy `venue` or `capacity` input fields returns HTTP 422.
 `starts_at` must include a timezone and be in the future. Optional `ends_at` must
 include a timezone and be strictly later than `starts_at`; omitted or null means
 no fixed finish time. `description` is optional. Invalid input returns HTTP 422.
+If a valid start time passes during request processing (for example, while waiting
+for a venue lock), creation returns HTTP 409 with `Event start time must be in the
+future`, without saving an event or its seat membership.
 
 Choose future dates when trying this example:
 

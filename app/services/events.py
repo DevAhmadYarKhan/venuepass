@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict, EventEditConflict
+from app.errors import EventNotFound, EmptyVenue, VenueAccessDenied, OrganizerRequired, EventOwnershipRequired, EventCancellationConflict, EventEditConflict, EventCreationConflict
 from app.models import Event, EventSeat, Seat, User, VenueOrganizer, Reservation, ReservationSeat
 from app.services.venues import lock_venue
 from app.schemas.events import EventCreate, EventFilters, EventUpdate
@@ -13,7 +13,7 @@ from app.schemas.seats import EventSeatRead
 
 
 async def create_event(session: AsyncSession, payload: EventCreate, *, organizer_id: UUID) -> Event:
-    """Commit validated event data and load generated fields."""
+    """Recheck creation eligibility after venue locking and commit fixed membership."""
     venue = await lock_venue(session, payload.venue_id)
     organizer = await session.get(User, organizer_id, populate_existing=True)
     if organizer is None or not organizer.is_organizer:
@@ -25,6 +25,10 @@ async def create_event(session: AsyncSession, payload: EventCreate, *, organizer
     if not seat_ids:
         raise EmptyVenue()
     try:
+        # Request validation precedes lock waits and queries; recheck the clock
+        # immediately before insertion and roll back if the start time has passed.
+        if payload.starts_at <= utc_now():
+            raise EventCreationConflict("Event start time must be in the future")
         event = Event(**payload.model_dump(), organizer_id=organizer_id, capacity=len(seat_ids))
         session.add(event)
         await session.flush()
@@ -39,7 +43,7 @@ async def create_event(session: AsyncSession, payload: EventCreate, *, organizer
 
 
 def utc_now() -> datetime:
-    """Supply an injectable wall-clock cutoff for upcoming-event discovery."""
+    """Supply an injectable wall-clock cutoff for creation and event discovery."""
     return datetime.now(timezone.utc)
 
 

@@ -508,3 +508,22 @@ Most browser tests mock API responses to cover failure states deterministically.
 It exercises a genuinely committed booking with a dropped response, recovery,
 a competing customer's seat conflict, customer cancellation, rebooking, and
 organizer event cancellation. No development database records are created.
+
+## Continuous integration
+
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs on every push and
+pull request. A fresh Ubuntu runner installs the Python version from
+`.python-version`, uv, the locked dependencies, and Chromium with its system
+libraries. It starts a temporary PostgreSQL 18 service containing
+`venuepass_db_test`, applies all Alembic migrations, checks the migrated schema
+against the models, and runs the full API and browser test suite.
+
+CI supplies both database URLs and a test-only JWT secret through environment
+variables. It neither reads your local `.env` nor connects to development or
+production databases. The test credentials are only for the disposable service;
+no GitHub secrets are required. CI tests changes but does not deploy them.
+
+After pushing the workflow, open the repository's **Actions** tab, select **CI**,
+and inspect the run and individual step logs. Pull requests also show the check
+result. A failed migration or test fails the job. Local verification does not
+establish that a GitHub run passed; its first hosted run occurs after a push.

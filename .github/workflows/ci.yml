@@ -1,0 +1,73 @@
+# Check every pushed branch and pull request without deploying the application.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Tests need repository contents, not permission to write or publish releases.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: API, migrations, and browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          # This database and its credentials exist only for the lifetime of the job.
+          POSTGRES_DB: venuepass_db_test
+          POSTGRES_USER: venuepass_user
+          POSTGRES_PASSWORD: venuepass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U venuepass_user -d venuepass_db_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Alembic and integration tests must target the same disposable test database.
+      # The PostgreSQL service is exposed on localhost because steps run on the host.
+      DATABASE_URL: postgresql+psycopg://venuepass_user:venuepass@127.0.0.1:5432/venuepass_db_test
+      TEST_DATABASE_URL: postgresql+psycopg://venuepass_user:venuepass@127.0.0.1:5432/venuepass_db_test
+      JWT_SECRET: test-signing-secret-that-is-at-least-32-characters
+      VENUEPASS_BROWSER_TESTS: "1"
+
+    steps:
+      - name: Check out repository
+        # Pin official actions to verified commits rather than mutable release tags.
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.12.18"
+
+      - name: Install project Python
+        # With no version argument, uv reads the repository's .python-version.
+        run: uv python install
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Install Chromium and system dependencies
+        # Fresh Linux runners also need the browser's operating-system libraries.
+        run: uv run playwright install --with-deps chromium
+
+      - name: Apply migrations to fresh database
+        run: uv run alembic upgrade head
+
+      - name: Check model and migration consistency
+        run: uv run alembic check
+
+      - name: Run full test suite
+        # Browser tests are enabled above; PostgreSQL integration tests are not excluded.
+        run: uv run pytest -q

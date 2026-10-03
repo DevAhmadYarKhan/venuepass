@@ -16,6 +16,16 @@ jobs:
     timeout-minutes: 15
 
     services:
+      redis:
+        # A disposable instance exercises real atomic counters and expiration.
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
       postgres:
         image: postgres:18
         env:
@@ -38,6 +48,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://venuepass_user:venuepass@127.0.0.1:5432/venuepass_db_test
       JWT_SECRET: test-signing-secret-that-is-at-least-32-characters
       VENUEPASS_BROWSER_TESTS: "1"
+      # Only dedicated limiter tests use Redis; unrelated tests stay isolated.
+      TEST_REDIS_URL: redis://127.0.0.1:6379/15
 
     steps:
       - name: Check out repository

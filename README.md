@@ -155,6 +155,44 @@ database. Users who own events cannot be deleted while those events reference th
 New and existing accounts default to `is_organizer: false`; public registration
 cannot grant this permission. User responses include `is_organizer`.
 
+## Authentication rate limits
+
+Login allows 10 requests per minute per client IP; registration allows 5 per hour.
+The endpoints have independent counters, and successful, failed, and malformed
+POST requests all consume attempts. Windows begin with the first request; rejected
+attempts do not extend them. HTTP 429 returns `{"detail":"Too many requests"}` and
+a `Retry-After` header containing the remaining wait in seconds.
+
+Set `REDIS_URL` to enable shared counters (use `rediss://` when your provider
+requires TLS). Without it, native development leaves limiting disabled. Public
+deployment must configure Redis. `AUTH_LOGIN_LIMIT`, `AUTH_LOGIN_WINDOW_SECONDS`,
+`AUTH_REGISTER_LIMIT`, and `AUTH_REGISTER_WINDOW_SECONDS` override the defaults;
+all must be positive integers. Redis stores expiring counters under hashed IP
+keys, not credentials or raw addresses. IP hashing is not anonymization.
+
+If configured Redis is unavailable, login and registration return HTTP 503 with
+`{"detail":"Authentication temporarily unavailable"}`. Other endpoints remain
+available. Connections and commands have one-second timeouts without automatic
+retries. Redis counters need no durable storage; a Redis restart can reset quotas.
+
+The limiter uses the client address resolved by Uvicorn, never raw forwarded
+headers. When deploying behind a proxy, configure `FORWARDED_ALLOW_IPS` with only
+trusted proxy addresses or networks. Do not set it to `*` on an unrestricted
+listener: clients could spoof their identity. Before public deployment, verify
+the hosting provider's forwarding behavior, including forged headers, and confirm
+different real clients receive independent quotas. Local Docker does not trust
+arbitrary forwarding headers. People sharing a public IP share a quota.
+
+Dedicated Redis integration tests use `TEST_REDIS_URL` and unique temporary key
+namespaces. They skip if that URL is absent; CI supplies a disposable Redis instance.
+To run them locally, start an isolated Redis container and supply its test URL:
+
+```bash
+docker run --rm -d --name venuepass-redis-test -p 127.0.0.1:6379:6379 redis:7-alpine
+TEST_REDIS_URL=redis://127.0.0.1:6379/15 uv run pytest tests/test_rate_limiting.py
+docker stop venuepass-redis-test
+```
+
 ## Tests
 
 ```bash
@@ -517,12 +555,12 @@ organizer event cancellation. No development database records are created.
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs on every push and
 pull request. A fresh Ubuntu runner installs the Python version from
 `.python-version`, uv, the locked dependencies, and Chromium with its system
-libraries. It starts a temporary PostgreSQL 18 service containing
+libraries. It starts disposable Redis and a temporary PostgreSQL 18 service containing
 `venuepass_db_test`, applies all Alembic migrations, checks the migrated schema
 against the models, and runs the full API and browser test suite.
 
 CI supplies both database URLs and a test-only JWT secret through environment
-variables. It neither reads your local `.env` nor connects to development or
+variables, plus `TEST_REDIS_URL` for dedicated limiter tests. It neither reads your local `.env` nor connects to development or
 production databases. The test credentials are only for the disposable service;
 no GitHub secrets are required. CI tests changes but does not deploy them.
 
@@ -533,10 +571,12 @@ establish that a GitHub run passed; its first hosted run occurs after a push.
 
 ## Docker setup
 
-Docker Compose runs the application and a separate PostgreSQL 18 container. It does
+Docker Compose runs the application, PostgreSQL 18, and private Redis containers. It does
 not use your system PostgreSQL, existing databases, or native-development `.env`.
 A one-shot `migrate` service applies Alembic migrations after PostgreSQL is healthy;
-`api` starts only when that service succeeds. The same application image includes
+`api` starts only when that service succeeds and Redis is healthy. Authentication
+rate limiting is enabled automatically; Redis has no published port or persistent
+volume, and migrations do not depend on it. The same application image includes
 the customer frontend and runs as a non-root user, without development dependencies.
 
 Install Docker with its Compose plugin, then prepare separate configuration:

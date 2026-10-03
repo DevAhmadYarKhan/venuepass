@@ -14,6 +14,10 @@ from app.security import hash_password
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings, get_settings
+from redis.asyncio import Redis
+from redis.backoff import NoBackoff
+from redis.asyncio.retry import Retry
+from app.rate_limiting import AuthRateLimiter, AuthRateLimitMiddleware
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -21,7 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        """Create database resources at startup and release them at shutdown."""
+        """Create database and Redis resources and release them at shutdown."""
         config = settings if settings is not None else get_settings()
         app.state.settings = config
         # Compute the dummy hash off the event loop once per application lifespan.
@@ -31,13 +35,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine = create_async_engine(str(config.database_url), pool_pre_ping=True)
         # Retain loaded attributes after commits to avoid implicit async I/O.
         app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        # Redis connections are lazy: an outage affects auth requests, not startup.
+        redis = Redis.from_url(str(config.redis_url), socket_connect_timeout=1,
+            socket_timeout=1, retry=Retry(NoBackoff(), 0)) if config.redis_url else None
+        app.state.auth_rate_limiter = AuthRateLimiter(redis) if redis is not None else None
         try:
             yield
         finally:
             # Release pooled connections even when the application exits on error.
             await engine.dispose()
+            if redis is not None:
+                await redis.aclose()
 
     app = FastAPI(title="VenuePass API", lifespan=lifespan)
+    app.add_middleware(AuthRateLimitMiddleware)
     app.include_router(events.router)
     app.include_router(reservations.router)
     app.include_router(venues.router)

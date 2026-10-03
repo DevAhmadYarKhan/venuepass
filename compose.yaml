@@ -8,6 +8,16 @@ x-application: &application
     JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker to a random signing secret}
 
 services:
+  redis:
+    # Ephemeral counters only; Redis is private and needs no persistent volume.
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   db:
     image: postgres:18
     environment:
@@ -38,6 +48,11 @@ services:
 
   api:
     <<: *application
+    environment:
+      # Preserve shared database settings while enabling Redis only for the API.
+      DATABASE_URL: postgresql+psycopg://venuepass_user:venuepass@db:5432/venuepass_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker to a random signing secret}
+      REDIS_URL: redis://redis:6379/0
     ports:
       # Bind only to localhost; APP_PORT avoids conflicts with a host-run API.
       - "127.0.0.1:${APP_PORT:-8000}:8000"
@@ -46,6 +61,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
 volumes:
   # Ordinary `compose down` preserves this volume; `down --volumes` deletes it.

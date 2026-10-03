@@ -1,0 +1,52 @@
+# Local application stack; PostgreSQL lives entirely inside this Compose project.
+x-application: &application
+  image: venuepass-api:local
+  build: .
+  environment:
+    # Explicit container networking ignores any host DATABASE_URL from .env.
+    DATABASE_URL: postgresql+psycopg://venuepass_user:venuepass@db:5432/venuepass_db
+    JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker to a random signing secret}
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      # Fixed credentials are for this local, unpublished database only.
+      POSTGRES_DB: venuepass_db
+      POSTGRES_USER: venuepass_user
+      POSTGRES_PASSWORD: venuepass
+    volumes:
+      # PostgreSQL 18 stores versioned data under this parent directory.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U venuepass_user -d venuepass_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    <<: *application
+    # Run once before the API; failed migrations must prevent API startup.
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *application
+    ports:
+      # Bind only to localhost; APP_PORT avoids conflicts with a host-run API.
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  # Ordinary `compose down` preserves this volume; `down --volumes` deletes it.
+  postgres_data:

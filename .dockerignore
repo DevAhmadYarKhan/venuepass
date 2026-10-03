@@ -1,0 +1,25 @@
+# Secrets never enter the build context, including example configuration files.
+.env
+.env.*
+# Host environments and version-control metadata do not belong in the image.
+.venv
+.git
+.github
+.agents
+.codex
+# Verification and generated artifacts are excluded from the runtime build.
+tests
+.pytest_cache
+__pycache__
+**/__pycache__
+*.py[cod]
+**/*.py[cod]
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
+build
+dist
+*.egg-info
+# Local orchestration configuration is not application source.
+compose*.yaml

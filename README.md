@@ -527,3 +527,65 @@ After pushing the workflow, open the repository's **Actions** tab, select **CI**
 and inspect the run and individual step logs. Pull requests also show the check
 result. A failed migration or test fails the job. Local verification does not
 establish that a GitHub run passed; its first hosted run occurs after a push.
+
+## Docker setup
+
+Docker Compose runs the application and a separate PostgreSQL 18 container. It does
+not use your system PostgreSQL, existing databases, or native-development `.env`.
+A one-shot `migrate` service applies Alembic migrations after PostgreSQL is healthy;
+`api` starts only when that service succeeds. The same application image includes
+the customer frontend and runs as a non-root user, without development dependencies.
+
+Install Docker with its Compose plugin, then prepare separate configuration:
+
+```bash
+cp .env.docker.example .env.docker
+docker run --rm python:3.14-slim-bookworm python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Paste the generated value into `JWT_SECRET` in `.env.docker`. Do not overwrite an
+existing Docker configuration or commit its secret. Set `APP_PORT` to another
+port, such as 8001, if a native API is already using 8000. Database credentials
+are fixed to `venuepass_user` / `venuepass` for this local Compose setup; the database
+port is not published. This configuration is not a public production deployment.
+
+```bash
+# Build and start; database readiness and migrations are automatic.
+docker compose --env-file .env.docker up --build -d
+# Check service state and inspect logs, including migration failures.
+docker compose --env-file .env.docker ps -a
+docker compose --env-file .env.docker logs api migrate db
+```
+
+With the default port, open `/demo/`, `/docs`, or `/health` at
+http://127.0.0.1:8000. The application's health check confirms liveness; it does
+not verify database connectivity. Configuration stays outside the image, and the
+container's `DATABASE_URL` explicitly uses the Compose hostname `db`.
+
+Create accounts through the API, then promote them inside this Docker database:
+
+```bash
+docker compose --env-file .env.docker exec api python -m app.cli promote-organizer user@example.com
+docker compose --env-file .env.docker exec api python -m app.cli promote-venue-manager user@example.com
+# Inspect migration state, or explicitly rerun migrations after a failed attempt.
+docker compose --env-file .env.docker exec api alembic current
+docker compose --env-file .env.docker run --rm migrate
+```
+
+After source or dependency changes, rerun `up --build -d`. There is no source bind
+mount or hot reload; rebuilding packages the updated application. To stop:
+
+```bash
+docker compose --env-file .env.docker down
+```
+
+This preserves the named PostgreSQL volume. Container recreation also preserves
+the data. Running `docker compose --env-file .env.docker down --volumes` instead
+**deletes the Compose database permanently**; it is only appropriate for an
+intentional local reset. Never delete volumes as part of ordinary shutdown.
+
+The standalone application image can also run with an externally supplied
+`DATABASE_URL` and `JWT_SECRET`. In that case, run its Alembic migration command
+as a separate step before starting Uvicorn; Compose's dependency ordering only
+applies when using this Compose file. Test databases, seed data, and deployment
+automation are not included in this change.

@@ -7,6 +7,7 @@ import "./booking.js";
 import "./navigation.js";
 import "./venues.js";
 import "./venue_access.js";
+import "./events.js";
 
 const pageSize = 6;
 let offset = 0;
@@ -15,6 +16,7 @@ let detailVersion = 0;
 let lastDetailButton;
 let currentEventId = null;
 let venues = new Map();
+let venueVersion = 0;
 let appliedFilters = new URLSearchParams({ upcoming_only: "true" });
 
 /** Convert local form dates to absolute instants; URLSearchParams handles timezone escaping. */
@@ -128,17 +130,26 @@ window.addEventListener("refresh-event", event => {
 function dateLabelVenue(id) { return venues.get(id)?.name || "Venue"; }
 
 async function loadVenues() {
+  const version = ++venueVersion;
   try {
     const rows = await allPages("/venues", 100);
+    if (version !== venueVersion) return;
     venues = new Map(rows.map(venue => [venue.id, venue]));
+    // Management-created venues refresh discovery choices without duplicating options.
+    const selected = $("venue-filter").value;
+    const placeholder = element("option", "All venues"); placeholder.value = "";
+    $("venue-filter").replaceChildren(placeholder);
     for (const venue of rows) {
       const option = element("option", venue.name);
       option.value = venue.id;
       $("venue-filter").append(option);
     }
+    $("venue-filter").value = selected;
     for (const label of document.querySelectorAll(".venue-name")) label.textContent = dateLabelVenue(label.dataset.venueId);
   } catch { /* Event browsing remains usable without the optional venue-name lookup. */ }
 }
+window.addEventListener("venueschanged", loadVenues);
+window.addEventListener("eventschanged", browse);
 // Deep links resolve through the API without depending on previously loaded cards.
 window.addEventListener("routechange", event => {
   if (event.detail.eventId && event.detail.eventId !== currentEventId) showEvent(event.detail.eventId);

@@ -26,6 +26,8 @@ def test_navigation_permissions_and_transport(page, demo_url):
     """Role views clear at logout; grants and rate-limit responses decode correctly."""
     browsing_routes(page)
     page.route('**/users/me/reservations?*', lambda route: fulfill(route, []))
+    page.route('**/users/me/events?*', lambda route: fulfill(route, []))
+    page.route('**/users/me/hosting-venues?*', lambda route: fulfill(route, []))
     page.goto(demo_url + '/app/')
     expect(page.locator('#organizer-nav')).not_to_be_visible()
     login(page)
@@ -164,3 +166,64 @@ def test_organizer_access_management(page, demo_url):
     pending[0].fulfill(status=204, body='')
     expect(page.locator('#venues-view')).not_to_be_visible()
     expect(page.locator('#venues-content')).not_to_contain_text(identity)
+
+
+@pytest.mark.parametrize('failure_status', [403, 409, 422, 500])
+def test_organizer_event_creation(page, demo_url, failure_status):
+    """Create with authorized choices, validate local times, and preserve failed input."""
+    browsing_routes(page)
+    page.route('**/users/me/reservations?*', lambda route: fulfill(route, []))
+    owned = []
+    attempts = []
+    page.route('**/users/me/events?*', lambda route: fulfill(route, owned))
+    page.route('**/users/me/hosting-venues?*', lambda route: fulfill(route, [
+        {'id': 'venue-1', 'name': 'Authorized Hall', 'address': 'Street'}]))
+
+    def create(route):
+        """Model one failed transaction followed by an explicit successful submission."""
+        payload = route.request.post_data_json
+        attempts.append(payload)
+        if len(attempts) == 1:
+            fulfill(route, {'detail': 'Creation refused'}, failure_status)
+        else:
+            result = {**event(), **payload, 'organizer_id': 'owner-id', 'cancelled_at': None}
+            owned.append(result)
+            fulfill(route, result, 201)
+
+    page.route('**/events', create)
+    page.goto(demo_url + '/app/')
+    login(page)
+    page.locator('#organizer-nav').click()
+    form = page.locator('#organizer-content form')
+    form.locator('[name=name]').fill('Created concert')
+    form.locator('[name=description]').fill('A new concert')
+    form.locator('[name=venue_id]').select_option('venue-1')
+    form.locator('[name=starts_at]').fill('2000-01-01T18:00')
+    form.get_by_role('button', name='Create event', exact=True).click()
+    expect(form).to_contain_text('Choose a future start')
+    assert attempts == []
+    form.locator('[name=starts_at]').fill('2099-01-01T18:00')
+    form.locator('[name=ends_at]').fill('2099-01-01T19:00')
+    form.get_by_role('button', name='Create event', exact=True).click()
+    expect(form).to_contain_text('Creation refused')
+    expect(form.locator('[name=name]')).to_have_value('Created concert')
+    if failure_status == 500:
+        expect(form).to_contain_text('outcome is uncertain')
+    assert len(attempts) == 1
+    form.get_by_role('button', name='Create event', exact=True).click()
+    expect(page.locator('#organizer-content .event-card')).to_contain_text('Created concert')
+    assert attempts[-1]['starts_at'].endswith('Z')
+    assert attempts[-1]['ends_at'].endswith('Z')
+
+
+def test_organizer_without_hosting_access(page, demo_url):
+    """No granted venues produces an explanation rather than an unusable submission."""
+    browsing_routes(page)
+    page.route('**/users/me/reservations?*', lambda route: fulfill(route, []))
+    page.route('**/users/me/events?*', lambda route: fulfill(route, []))
+    page.route('**/users/me/hosting-venues?*', lambda route: fulfill(route, []))
+    page.goto(demo_url + '/app/')
+    login(page, manager=False)
+    page.locator('#organizer-nav').click()
+    expect(page.locator('#organizer-content')).to_contain_text('No authorized venues')
+    expect(page.get_by_role('button', name='Create event', exact=True)).to_be_disabled()

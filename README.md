@@ -662,3 +662,9 @@ Venue owners can grant hosting access using an organizer's account UUID and
 confirm revocation from the selected venue's organizer list. The target account
 must already have organizer permission (granted by the operator through the CLI).
 The list shows explicit grants only; owning organizers need no grant to host.
+
+Organizers can browse their own upcoming, started, and cancelled events in **My
+events** and create events using authorized venues. Dates use the displayed local
+timezone and are sent as absolute UTC instants; the end is optional. Empty venues
+and revoked access are reported by the API. After an uncertain creation response,
+use **Refresh my events** and inspect the list before submitting again.

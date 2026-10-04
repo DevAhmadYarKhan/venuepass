@@ -53,3 +53,53 @@ def test_event_deep_link(page, demo_url):
     page.goto(demo_url + '/app/#/events/' + identity)
     expect(page.locator('#detail-heading')).to_have_text('Evening concert')
     expect(page.locator('#event-detail')).to_be_visible()
+
+
+@pytest.mark.parametrize('failure_status', [409, 403, 500])
+def test_venue_and_seat_management(page, demo_url, failure_status):
+    """Create venues/seats and explain duplicate, permission, and uncertain failures."""
+    browsing_routes(page)
+    page.route('**/users/me/reservations?*', lambda route: fulfill(route, []))
+    venues = []
+    seats = []
+
+    def create_venue(route):
+        """Return server-owned identity for the submitted venue details."""
+        venue = {**route.request.post_data_json, 'id': 'venue-created', 'owner_id': 'owner-id'}
+        venues.append(venue)
+        fulfill(route, venue, 201)
+
+    def create_seats(route):
+        """Simulate an atomic duplicate check without writing a real database."""
+        if seats:
+            fulfill(route, {'detail': 'Duplicate seat' if failure_status == 409 else 'Seat request failed'}, failure_status)
+        else:
+            seats.extend([{**seat, 'id': 'seat-created', 'venue_id': 'venue-created'}
+                for seat in route.request.post_data_json['seats']])
+            fulfill(route, seats, 201)
+
+    page.route('**/users/me/venues?*', lambda route: fulfill(route, venues))
+    page.route('**/venues', create_venue)
+    page.route('**/venues/venue-created/seats?*', lambda route: fulfill(route, seats))
+    page.route('**/venues/venue-created/seats', create_seats)
+    page.goto(demo_url + '/app/')
+    login(page)
+    page.locator('#venues-nav').click()
+    page.locator('#venues-content input[name=name]').fill('New Hall')
+    page.locator('#venues-content input[name=address]').fill('Main Street')
+    page.get_by_role('button', name='Create venue', exact=True).click()
+    expect(page.locator('#venues-content .event-card')).to_contain_text('New Hall')
+    page.get_by_role('button', name='Manage venue').click()
+    for _ in range(2):
+        page.locator('.seat-editor input[name=section]').fill('Main')
+        page.locator('.seat-editor input[name=row]').fill('A')
+        page.locator('.seat-editor input[name=number]').fill('1')
+        page.get_by_role('button', name='Add seats', exact=True).click()
+        if not _:
+            expect(page.locator('#venues-content')).to_contain_text('Seat 1')
+            expect(page.locator('#venues-content')).to_contain_text('Seats added.')
+    expect(page.locator('#venues-content')).to_contain_text('Duplicate seat' if failure_status == 409 else 'Seat request failed')
+    if failure_status == 500:
+        expect(page.locator('#venues-content')).to_contain_text('outcome is uncertain')
+    page.set_viewport_size({'width': 375, 'height': 812})
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

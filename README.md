@@ -651,3 +651,9 @@ footer. Hash navigation supports event deep links (`#/events/EVENT_UUID`),
 reservations, and permission-based management views. Tokens stay in memory and
 refreshing logs you out. An account's UUID appears after login so organizers can
 share it with venue owners. Navigation preserves unresolved booking identities.
+
+Venue managers can create venues from **My venues**, then select **Manage venue**
+to page through physical seats and submit editable batches of up to 500 seats.
+Duplicate batches fail atomically. New seats affect future events, not existing
+event snapshots. After an uncertain creation response, refresh and inspect the
+list before submitting again; the interface never automatically repeats creation.

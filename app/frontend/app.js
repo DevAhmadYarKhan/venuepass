@@ -5,6 +5,7 @@ import { $, element, dateLabel, status } from "./ui.js";
 import "./auth.js";
 import "./booking.js";
 import "./navigation.js";
+import "./venues.js";
 
 const pageSize = 6;
 let offset = 0;

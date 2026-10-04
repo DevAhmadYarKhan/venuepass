@@ -496,9 +496,10 @@ shown in your browser's timezone; local date filters are converted to absolute
 instants before being submitted. Seat groups represent labels, not a floor plan.
 It fetches every seat page rather than omitting larger layouts.
 
-The interface reads existing API data and does not seed or reset the database. If there
-are no events, use Swagger and the documented organizer workflow to create a
-venue, seats, and a future event. Payments and seat holds are outside this application.
+The interface reads existing API data and does not seed or reset the database. If
+there are no events, authorized accounts can prepare venues and seats in **My
+venues**, then create future events in **My events**. The documented API workflow
+is also available through Swagger. Payments and seat holds are outside this application.
 
 Browser checks use Playwright as development tooling. Install Chromium once:
 
@@ -668,3 +669,16 @@ events** and create events using authorized venues. Dates use the displayed loca
 timezone and are sent as absolute UTC instants; the end is optional. Empty venues
 and revoked access are reported by the API. After an uncertain creation response,
 use **Refresh my events** and inspect the list before submitting again.
+
+Select **Manage event** to edit an upcoming event's name or description, or cancel
+it after confirmation. Clearing the description sends null. Cancellation cancels
+active reservations and releases their seats while preserving history. Started
+and cancelled events remain visible without edit/cancel actions. Permission and
+timing conflicts remain enforced by the API. Successful changes refresh public
+discovery and the current user's reservation history.
+
+Management permissions are still operator-controlled through `app.cli`; there is
+no public self-promotion. After an operator promotes an already logged-in account,
+log out and back in to refresh its browser navigation. Backend permission checks
+always read current database flags. Password recovery and persistent login are
+not implemented; this application does not process payments.

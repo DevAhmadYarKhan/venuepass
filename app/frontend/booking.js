@@ -249,6 +249,8 @@ $("keep-reservation").addEventListener("click", () => $("cancel-dialog").close()
 $("history-refresh").addEventListener("click", () => { eventCache.clear(); seatCache.clear(); loadHistory(); });
 $("history-previous").addEventListener("click", () => { historyOffset -= historyPageSize; loadHistory(); });
 $("history-next").addEventListener("click", () => { historyOffset += historyPageSize; loadHistory(); });
+// Organizer lifecycle changes invalidate public labels and private cancellation state.
+window.addEventListener("historychanged", () => { eventCache.clear(); seatCache.clear(); loadHistory(); });
 window.addEventListener("authchange", () => {
   selected.clear();
   ++historyVersion;

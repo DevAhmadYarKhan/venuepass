@@ -47,7 +47,7 @@ export async function authRequest(path, options = {}) {
 
 /** Native modal dialogs provide keyboard focus containment and Escape support. */
 export function openAuth() {
-  if (user) { status("auth-status", `Logged in as ${user.email}. Refreshing this page logs you out.`); return; }
+  if (user) { status("auth-status", `Logged in as ${user.email}. Account ID: ${user.id}. Refreshing this page logs you out.`); return; }
   if (!$("auth-dialog").open) $("auth-dialog").showModal();
   $("auth-email").focus();
 }

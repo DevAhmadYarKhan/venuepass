@@ -10,7 +10,7 @@
 </head>
 <body>
   <!-- Same-origin assets consume the independently usable JSON API. -->
-  <header class="site-header"><a class="brand" href="./">Venue<span>Pass</span></a><div class="header-actions"><span id="identity" class="muted"></span><button id="account" type="button" class="secondary">Log in / register</button><button id="logout" type="button" class="secondary" hidden>Log out</button></div></header>
+  <header class="site-header"><a class="brand" href="#/events">Venue<span>Pass</span></a><div class="header-actions"><span id="identity" class="muted"></span><button id="account" type="button" class="secondary">Log in / register</button><button id="logout" type="button" class="secondary" hidden>Log out</button></div></header>
   <nav id="app-nav" class="app-nav" aria-label="Application">
     <a href="#/events">Explore events</a><a href="#/reservations">My reservations</a>
     <a id="organizer-nav" href="#/organizer" hidden>My events</a>
@@ -19,6 +19,11 @@
   <main>
     <!-- Identity remains visible in management views so account IDs can be shared. -->
     <p id="auth-status" role="status" aria-live="polite"></p>
+    <!-- Unresolved booking identity remains reachable across management navigation. -->
+    <aside id="pending-booking" class="pending" aria-labelledby="pending-heading" hidden>
+      <h2 id="pending-heading">Resolve your booking request</h2><p id="pending-description"></p><button id="retry-booking" type="button">Retry the same booking</button>
+    </aside>
+    <p id="booking-status" role="status" aria-live="polite"></p>
     <div id="customer-view">
     <section class="intro"><p class="eyebrow">Good nights start here</p><h1>Find your event.<br>Pick your place.</h1><p>Explore what's on and see the seats available at each event.</p></section>
     <section aria-labelledby="browse-heading">
@@ -35,10 +40,6 @@
       <div id="event-list" class="event-grid"></div>
       <nav class="pagination" aria-label="Event pages"><button id="previous" type="button" class="secondary" disabled>Previous</button><span id="page-label">Page 1</span><button id="next" type="button" class="secondary" disabled>Next</button></nav>
     </section>
-    <aside id="pending-booking" class="pending" aria-labelledby="pending-heading" hidden>
-      <h2 id="pending-heading">Resolve your booking request</h2><p id="pending-description"></p><button id="retry-booking" type="button">Retry the same booking</button>
-    </aside>
-    <p id="booking-status" role="status" aria-live="polite"></p>
     <section id="event-detail" class="detail" aria-labelledby="detail-heading" hidden>
       <div class="section-heading"><h2 id="detail-heading" tabindex="-1">Event details</h2><button id="close-detail" type="button" class="secondary">Close details</button></div>
       <div id="detail-copy"></div>

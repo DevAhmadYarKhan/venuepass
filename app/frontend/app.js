@@ -8,6 +8,7 @@ import "./navigation.js";
 import "./venues.js";
 import "./venue_access.js";
 import "./events.js";
+import "./event_management.js";
 
 const pageSize = 6;
 let offset = 0;

@@ -34,6 +34,11 @@ def test_navigation_permissions_and_transport(page, demo_url):
     expect(page.locator('#auth-status')).to_contain_text('owner-id')
     page.locator('#organizer-nav').click()
     expect(page.locator('#organizer-view')).to_be_visible()
+    # Home is in-page navigation, not a refresh that discards authentication.
+    page.get_by_role('link', name='VenuePass', exact=True).click()
+    expect(page.locator('#identity')).to_have_text('owner@example.com')
+    expect(page.locator('#customer-view')).to_be_visible()
+    page.locator('#organizer-nav').click()
     page.locator('#logout').click()
     expect(page.locator('#organizer-view')).not_to_be_visible()
     expect(page.locator('#organizer-nav')).not_to_be_visible()
@@ -227,3 +232,61 @@ def test_organizer_without_hosting_access(page, demo_url):
     page.locator('#organizer-nav').click()
     expect(page.locator('#organizer-content')).to_contain_text('No authorized venues')
     expect(page.get_by_role('button', name='Create event', exact=True)).to_be_disabled()
+
+
+def test_organizer_event_lifecycle(page, demo_url):
+    """Edit details, clear descriptions, surface conflicts, and confirm cancellation."""
+    browsing_routes(page)
+    page.route('**/users/me/reservations?*', lambda route: fulfill(route, []))
+    owned = {**event(), 'organizer_id': 'owner-id', 'description': 'Original', 'cancelled_at': None}
+    page.route('**/users/me/events?*', lambda route: fulfill(route, [owned]))
+    page.route('**/users/me/hosting-venues?*', lambda route: fulfill(route, []))
+    attempts = []
+
+    def details(route):
+        """Return current state and apply only allowed detail fields on PATCH."""
+        if route.request.method == 'PATCH':
+            attempts.append(route.request.post_data_json)
+            if len(attempts) == 1:
+                fulfill(route, {'detail': 'Event ownership required'}, 403)
+                return
+            owned.update(route.request.post_data_json)
+        fulfill(route, owned)
+
+    def cancel(route):
+        """Model organizer cancellation while preserving the historical event."""
+        owned['cancelled_at'] = '2026-10-04T12:00:00Z'
+        fulfill(route, owned)
+
+    page.route('**/events/event-1', details)
+    page.route('**/events/event-1/cancel', cancel)
+    page.goto(demo_url + '/app/')
+    login(page)
+    page.locator('#organizer-nav').click()
+    page.get_by_role('button', name='Manage event', exact=True).click()
+    detail = page.locator('#organizer-content .detail')
+    detail.locator('[name=name]').fill('Edited concert')
+    detail.locator('[name=description]').fill('')
+    detail.get_by_role('button', name='Save event details', exact=True).click()
+    expect(detail).to_contain_text('Event ownership required')
+    expect(detail.locator('[name=name]')).to_have_value('Edited concert')
+    detail.get_by_role('button', name='Save event details', exact=True).click()
+    expect(page.locator('#organizer-content .event-card')).to_contain_text('Edited concert')
+    assert attempts[-1] == {'name': 'Edited concert', 'description': None}
+    page.get_by_role('button', name='Manage event', exact=True).click()
+    page.once('dialog', lambda dialog: dialog.dismiss())
+    detail.get_by_role('button', name='Cancel event', exact=True).click()
+    assert owned['cancelled_at'] is None
+    page.once('dialog', lambda dialog: dialog.accept())
+    detail.get_by_role('button', name='Cancel event', exact=True).click()
+    expect(page.locator('#organizer-content .event-card .badge')).to_have_text('Cancelled')
+    page.get_by_role('button', name='Manage event', exact=True).click()
+    expect(detail).to_contain_text('cannot be edited')
+    expect(detail.get_by_role('button', name='Save event details')).to_have_count(0)
+    # A fresh detail read also prevents edits when an event has started since listing.
+    owned['cancelled_at'] = None
+    owned['starts_at'] = '2000-01-01T00:00:00Z'
+    page.get_by_role('button', name='Refresh my events').click()
+    page.get_by_role('button', name='Manage event', exact=True).click()
+    expect(detail).to_contain_text('Started')
+    expect(detail.get_by_role('button', name='Cancel event')).to_have_count(0)

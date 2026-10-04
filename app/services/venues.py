@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.errors import VenueNotFound
-from app.models import Venue
+from app.models import Venue, VenueOrganizer
 from app.schemas.venues import VenueCreate
 
 
@@ -31,6 +31,20 @@ async def get_venue(session: AsyncSession, venue_id: UUID) -> Venue:
     if venue is None:
         raise VenueNotFound()
     return venue
+
+
+async def list_managed_venues(session: AsyncSession, user_id: UUID, *, hosting: bool,
+    limit: int, offset: int) -> list[Venue]:
+    """Filter ownership or current hosting access before deterministic pagination."""
+    condition = Venue.owner_id == user_id
+    if hosting:
+        # EXISTS keeps one venue per result even when an owner has an explicit grant.
+        grant = select(VenueOrganizer.venue_id).where(
+            VenueOrganizer.venue_id == Venue.id,
+            VenueOrganizer.organizer_id == user_id).exists()
+        condition = condition | grant
+    return list(await session.scalars(select(Venue).where(condition)
+        .order_by(Venue.created_at, Venue.id).limit(limit).offset(offset)))
 
 
 async def lock_venue(session: AsyncSession, venue_id: UUID) -> Venue:

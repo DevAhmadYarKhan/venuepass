@@ -446,6 +446,13 @@ notifications, and refunds are not implemented.
 ## Organizer event management
 
 `GET /users/me/events` requires authentication and current organizer permission.
+
+`GET /users/me/venues` lists only the current venue manager's owned venues.
+`GET /users/me/hosting-venues` lists venues the current organizer owns or has an
+explicit hosting grant for. Both filter before pagination, return venue objects,
+and use `limit=20` (1–100) and `offset=0` (nonnegative). Grants are checked on each
+request; removing one affects the next listing. Missing authentication returns
+401; missing current role permission returns 403.
 It lists only the caller's events, including past and cancelled events, ordered
 newest-created first with descending UUID as a tie-breaker. `limit` defaults to 20
 (1–100), and `offset` defaults to 0 (nonnegative). An empty list returns HTTP 200.

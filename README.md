@@ -443,9 +443,7 @@ row in `events`, so concurrent operations take effect in lock-acquisition order.
 Migration downgrade refuses to erase event cancellation history. Restoration,
 notifications, and refunds are not implemented.
 
-## Organizer event management
-
-`GET /users/me/events` requires authentication and current organizer permission.
+## Private venue discovery
 
 `GET /users/me/venues` lists only the current venue manager's owned venues.
 `GET /users/me/hosting-venues` lists venues the current organizer owns or has an
@@ -453,6 +451,11 @@ explicit hosting grant for. Both filter before pagination, return venue objects,
 and use `limit=20` (1–100) and `offset=0` (nonnegative). Grants are checked on each
 request; removing one affects the next listing. Missing authentication returns
 401; missing current role permission returns 403.
+
+## Organizer event management
+
+`GET /users/me/events` requires authentication and current organizer permission.
+
 It lists only the caller's events, including past and cancelled events, ordered
 newest-created first with descending UUID as a tie-breaker. `limit` defaults to 20
 (1–100), and `offset` defaults to 0 (nonnegative). An empty list returns HTTP 200.
@@ -481,21 +484,21 @@ their start time reject editing with HTTP 409. Editing locks the same event row 
 cancellation and checks event state and the clock after any lock wait. It changes
 neither the schedule nor seats or reservations, and commits supplied fields together.
 
-## Customer demo
+## Customer interface
 
-Start the API as usual and open **http://127.0.0.1:8000/demo/**. The demo is served
+Start the API as usual and open **http://127.0.0.1:8000/app/**. The interface is served
 by FastAPI using HTML, CSS, and JavaScript; no frontend build or separate service
 is required. Swagger remains at `/docs`. All browser requests use the same origin.
 
-The public demo supports event-name, venue, start-date, and upcoming-only filters,
+The public interface supports event-name, venue, start-date, and upcoming-only filters,
 event pagination, and seat availability grouped by section and row. Dates are
 shown in your browser's timezone; local date filters are converted to absolute
 instants before being submitted. Seat groups represent labels, not a floor plan.
 It fetches every seat page rather than omitting larger layouts.
 
-The demo reads existing API data and does not seed or reset the database. If there
+The interface reads existing API data and does not seed or reset the database. If there
 are no events, use Swagger and the documented organizer workflow to create a
-venue, seats, and a future event. Payments and seat holds are outside the demo.
+venue, seats, and a future event. Payments and seat holds are outside this application.
 
 Browser checks use Playwright as development tooling. Install Chromium once:
 
@@ -508,14 +511,14 @@ Ordinary `uv run pytest` skips browser checks unless enabled. Browser tests serv
 the actual frontend and mock API responses, so they do not modify a database;
 the PostgreSQL integration suite verifies backend behavior separately.
 
-The customer demo supports account registration, login, logout, and displaying the
+The customer interface supports account registration, login, logout, and displaying the
 current account. Registration leads to an explicit login. Access tokens live only
 in JavaScript memory, never browser storage; refreshing logs you out. Logout
 clears the local session but does not revoke an already-issued server token.
 Expired authenticated requests prompt for login again. Passwords are cleared from
 the form after submission and are not included in URLs or logs.
 
-### Booking and managing reservations in the demo
+### Booking and managing reservations in the interface
 
 Log in, open an event, and select up to 20 available seats. Review the labelled
 selection and choose **Reserve selected seats**. Selection alone does not claim
@@ -524,7 +527,7 @@ and clears the selection so you can choose again. Successful booking also refres
 availability and your reservation history.
 
 Each intended booking gets a freshly generated idempotency key. If a response is
-lost, unreadable, times out, or reports a server error, the demo freezes that exact
+lost, unreadable, times out, or reports a server error, the interface freezes that exact
 request and offers **Retry the same booking** with the same key and seats. It
 blocks new bookings until the original outcome is resolved. If authentication
 expires, log in as the original account and retry. A different account cannot
@@ -607,7 +610,7 @@ docker compose --env-file .env.docker ps -a
 docker compose --env-file .env.docker logs api migrate db
 ```
 
-With the default port, open `/demo/`, `/docs`, or `/health` at
+With the default port, open `/app/`, `/docs`, or `/health` at
 http://127.0.0.1:8000. The application's health check confirms liveness; it does
 not verify database connectivity. Configuration stays outside the image, and the
 container's `DATABASE_URL` explicitly uses the Compose hostname `db`.
@@ -639,3 +642,12 @@ The standalone application image can also run with an externally supplied
 as a separate step before starting Uvicorn; Compose's dependency ordering only
 applies when using this Compose file. Test databases, seed data, and deployment
 automation are not included in this change.
+
+## Browser application
+
+Open `/app/` (or `/`, which redirects there). Existing `/demo/` links continue to
+work. The interface consumes the JSON API; API documentation is linked in its
+footer. Hash navigation supports event deep links (`#/events/EVENT_UUID`),
+reservations, and permission-based management views. Tokens stay in memory and
+refreshing logs you out. An account's UUID appears after login so organizers can
+share it with venue owners. Navigation preserves unresolved booking identities.

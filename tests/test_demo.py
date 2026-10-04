@@ -20,3 +20,7 @@ async def test_demo_assets_and_api_routes():
         assert (await client.get('/health')).json() == {'status': 'ok'}
         assert (await client.get('/docs')).status_code == 200
         assert 'get' in (await client.get('/openapi.json')).json()['paths']['/events']
+        # The canonical interface and old demo links serve the same assets.
+        assert (await client.get('/')).headers['location'] == '/app/'
+        assert (await client.get('/app/')).status_code == 200
+        assert (await client.get('/app/navigation.js')).status_code == 200

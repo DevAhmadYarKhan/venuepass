@@ -8,7 +8,11 @@ let sessionVersion = 0;
 let registering = false;
 let busy = false;
 
+/** Expose identity without exposing the in-memory bearer token. */
 export function currentUser() { return user; }
+
+/** View controllers use this generation to discard results from old sessions. */
+export function authVersion() { return sessionVersion; }
 
 /** Announce identity changes so customer views can discard private data immediately. */
 function changed() {
@@ -83,7 +87,7 @@ $("auth-form").addEventListener("submit", async event => {
       ++sessionVersion;
       changed();
       $("auth-dialog").close();
-      status("auth-status", `Logged in as ${identity.email}. Authentication stays in memory until you refresh or log out.`);
+      status("auth-status", `Logged in as ${identity.email}. Account ID: ${identity.id}. Authentication stays in memory until you refresh or log out.`);
     }
   } catch (error) { status("auth-form-status", error.message, true); }
   finally {

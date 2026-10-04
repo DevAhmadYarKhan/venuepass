@@ -1,4 +1,4 @@
-/* Shared tokens keep the small customer demo consistent without a UI framework. */
+/* Shared tokens keep the application consistent without a UI framework. */
 :root { color-scheme: light; --ink: #192e29; --muted: #53675e; --paper: #f6f5ef; --green: #173d35; --line: #cdd7cd; --accent: #d6ee93; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink); font: 1rem/1.6 system-ui, sans-serif; }
@@ -32,3 +32,7 @@ button.seat { color: var(--green); font-weight: 600; }button.seat.selected { bac
 .selection { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 24px; }.selection button { margin: 8px 8px 0 0; }.pending { border: 2px solid #8b4b00; background: #fff6df; border-radius: 12px; padding: 20px; margin-block: 24px; }.pending h2 { margin-top: 0; }
 .reservation-card { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 24px; overflow-wrap: anywhere; }.reservation-card .badge { display: inline-block; }.reservation-card ul { padding-left: 20px; }#cancel-dialog button { margin: 6px 0; }
 @media (max-width: 520px) { .pagination { flex-wrap: wrap; gap: 10px; } }
+/* Navigation wraps and long account IDs cannot force horizontal scrolling. */
+.app-nav { width: min(1160px, 92%); margin: 20px auto; display: flex; flex-wrap: wrap; gap: 18px; }
+.app-nav [aria-current="page"] { font-weight: 800; }
+#auth-status { overflow-wrap: anywhere; }

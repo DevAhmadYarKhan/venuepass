@@ -4,6 +4,7 @@ import { request, allPages } from "./api.js";
 import { $, element, dateLabel, status } from "./ui.js";
 import "./auth.js";
 import "./booking.js";
+import "./navigation.js";
 
 const pageSize = 6;
 let offset = 0;
@@ -46,11 +47,11 @@ async function browse() {
       card.querySelector(".venue-name").dataset.venueId = event.venue_id;
       const button = element("button", "View event & seats");
       button.type = "button";
-      button.addEventListener("click", () => showEvent(event.id, button));
+      button.addEventListener("click", () => { location.hash = `/events/${event.id}`; showEvent(event.id, button); });
       card.append(button);
       $("event-list").append(card);
     }
-    status("browse-status", rows.length ? `${rows.length} events on this page.` : "No events found. Try different filters, or create an event through the API docs.");
+    status("browse-status", rows.length ? `${rows.length} events on this page.` : "No events found. Try different filters, or ask an organizer to create an event.");
     $("page-label").textContent = `Page ${offset / pageSize + 1}`;
     $("previous").disabled = offset === 0;
     $("next").disabled = rows.length < pageSize;
@@ -116,7 +117,7 @@ function renderSeats(seats) {
 $("filters").addEventListener("submit", event => { event.preventDefault(); appliedFilters = filterQuery(); offset = 0; browse(); });
 $("previous").addEventListener("click", () => { offset -= pageSize; browse(); });
 $("next").addEventListener("click", () => { offset += pageSize; browse(); });
-$("close-detail").addEventListener("click", () => { ++detailVersion; currentEventId = null; window.dispatchEvent(new CustomEvent("eventloading")); $("event-detail").hidden = true; lastDetailButton?.focus(); });
+$("close-detail").addEventListener("click", () => { ++detailVersion; currentEventId = null; window.dispatchEvent(new CustomEvent("eventloading")); $("event-detail").hidden = true; location.hash = "/events"; lastDetailButton?.focus(); });
 window.addEventListener("refresh-event", event => {
   if (currentEventId === event.detail.id && !$("event-detail").hidden) showEvent(currentEventId, lastDetailButton, false);
 });
@@ -136,6 +137,12 @@ async function loadVenues() {
     for (const label of document.querySelectorAll(".venue-name")) label.textContent = dateLabelVenue(label.dataset.venueId);
   } catch { /* Event browsing remains usable without the optional venue-name lookup. */ }
 }
+// Deep links resolve through the API without depending on previously loaded cards.
+window.addEventListener("routechange", event => {
+  if (event.detail.eventId && event.detail.eventId !== currentEventId) showEvent(event.detail.eventId);
+});
+const initialEvent = location.hash.match(/^#\/events\/([0-9a-f-]{36})$/i);
+if (initialEvent) showEvent(initialEvent[1]);
 // Optional venue enrichment never blocks the primary event list.
 browse();
 loadVenues();

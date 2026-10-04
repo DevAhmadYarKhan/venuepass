@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import secrets
 
@@ -57,8 +57,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(health.router)
-    # Resolve assets from the module so serving the demo is independent of cwd.
-    app.mount("/demo", StaticFiles(directory=Path(__file__).parent / "demo", html=True), name="demo")
+    # Resolve assets independently of cwd; preserve old links to the same interface.
+    assets = Path(__file__).parent / "frontend"
+    app.mount("/app", StaticFiles(directory=assets, html=True), name="frontend")
+    app.mount("/demo", StaticFiles(directory=assets, html=True), name="demo")
+
+    @app.get("/", include_in_schema=False)
+    async def frontend_home(request: Request):
+        """Open the application while respecting a configured deployment root path."""
+        return RedirectResponse(request.scope.get("root_path", "") + "/app/")
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):

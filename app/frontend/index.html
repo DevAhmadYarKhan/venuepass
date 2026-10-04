@@ -9,9 +9,15 @@
   <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <!-- A same-origin demo keeps API calls and browser deployment straightforward. -->
-  <header class="site-header"><a class="brand" href="./">Venue<span>Pass</span></a><div class="header-actions"><span id="identity" class="muted"></span><button id="account" type="button" class="secondary">Log in / register</button><button id="logout" type="button" class="secondary" hidden>Log out</button><a href="/docs">API docs ↗</a></div></header>
+  <!-- Same-origin assets consume the independently usable JSON API. -->
+  <header class="site-header"><a class="brand" href="./">Venue<span>Pass</span></a><div class="header-actions"><span id="identity" class="muted"></span><button id="account" type="button" class="secondary">Log in / register</button><button id="logout" type="button" class="secondary" hidden>Log out</button></div></header>
+  <nav id="app-nav" class="app-nav" aria-label="Application">
+    <a href="#/events">Explore events</a><a href="#/reservations">My reservations</a>
+    <a id="organizer-nav" href="#/organizer" hidden>My events</a>
+    <a id="venues-nav" href="#/venues" hidden>My venues</a>
+  </nav>
   <main>
+    <div id="customer-view">
     <p id="auth-status" role="status" aria-live="polite"></p>
     <section class="intro"><p class="eyebrow">Good nights start here</p><h1>Find your event.<br>Pick your place.</h1><p>Explore what's on and see the seats available at each event.</p></section>
     <section aria-labelledby="browse-heading">
@@ -45,10 +51,14 @@
       </section>
     </section>
     <section aria-labelledby="history-heading">
-      <div class="section-heading"><h2 id="history-heading">My reservations</h2><button id="history-refresh" type="button" class="secondary" disabled>Refresh reservations</button></div>
+      <div class="section-heading"><h2 id="history-heading" tabindex="-1">My reservations</h2><button id="history-refresh" type="button" class="secondary" disabled>Refresh reservations</button></div>
       <p id="history-status" role="status" aria-live="polite">Log in to view your reservations.</p><div id="history-list" class="event-grid"></div>
       <nav class="pagination" aria-label="Reservation pages"><button id="history-previous" type="button" class="secondary" disabled>Previous reservations</button><span id="history-page">Page 1</span><button id="history-next" type="button" class="secondary" disabled>Next reservations</button></nav>
     </section>
+    </div>
+    <!-- Management regions are populated only for the current authenticated identity. -->
+    <section id="organizer-view" hidden aria-labelledby="organizer-heading"><h1 id="organizer-heading" tabindex="-1">My events</h1><div id="organizer-content"></div></section>
+    <section id="venues-view" hidden aria-labelledby="venues-heading"><h1 id="venues-heading" tabindex="-1">My venues</h1><div id="venues-content"></div></section>
   </main>
   <!-- Authentication is a native modal with explicit labels and memory-only sessions. -->
   <dialog id="auth-dialog" aria-labelledby="auth-title">
@@ -68,6 +78,6 @@
     <button id="keep-reservation" type="button" class="secondary">Keep reservation / close</button>
     <button id="confirm-cancel" type="button">Cancel reservation</button><p id="cancel-status" role="status" aria-live="polite"></p>
   </dialog>
-  <footer>VenuePass customer demo · <a href="/docs">Explore the API</a></footer>
+  <footer>VenuePass · <a href="/docs">API documentation</a></footer>
 </body>
 </html>

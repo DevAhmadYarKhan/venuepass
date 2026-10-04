@@ -82,6 +82,7 @@ def test_venue_and_seat_management(page, demo_url, failure_status):
     page.route('**/venues', create_venue)
     page.route('**/venues/venue-created/seats?*', lambda route: fulfill(route, seats))
     page.route('**/venues/venue-created/seats', create_seats)
+    page.route('**/venues/venue-created/organizers?*', lambda route: fulfill(route, []))
     page.goto(demo_url + '/app/')
     login(page)
     page.locator('#venues-nav').click()
@@ -103,3 +104,63 @@ def test_venue_and_seat_management(page, demo_url, failure_status):
         expect(page.locator('#venues-content')).to_contain_text('outcome is uncertain')
     page.set_viewport_size({'width': 375, 'height': 812})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_organizer_access_management(page, demo_url):
+    """Owner grants and confirmed revocations accept empty successful responses."""
+    browsing_routes(page)
+    page.route('**/users/me/reservations?*', lambda route: fulfill(route, []))
+    page.route('**/users/me/venues?*', lambda route: fulfill(route, [
+        {'id': 'venue-access', 'name': 'Access Hall', 'address': 'Street', 'owner_id': 'owner-id'}]))
+    page.route('**/venues/venue-access/seats?*', lambda route: fulfill(route, []))
+    identities = []
+    identity = '00000000-0000-0000-0000-000000000002'
+    page.route('**/venues/venue-access/organizers?*', lambda route: fulfill(route, identities))
+
+    def change(route):
+        """Record exactly one explicit grant and model a naturally repeatable revoke."""
+        if route.request.method == 'PUT':
+            if identity not in identities:
+                identities.append(identity)
+        else:
+            identities.clear()
+        route.fulfill(status=204, body='')
+
+    page.route(f'**/venues/venue-access/organizers/{identity}', change)
+    page.goto(demo_url + '/app/')
+    login(page)
+    page.locator('#venues-nav').click()
+    page.get_by_role('button', name='Manage venue').click()
+    expect(page.locator('#venue-access')).to_contain_text('No explicit organizer grants')
+    for _ in range(2):
+        page.get_by_label('Organizer account UUID').fill(identity)
+        page.get_by_role('button', name='Grant access', exact=True).click()
+        expect(page.locator('#venue-access li')).to_have_count(1)
+    page.once('dialog', lambda dialog: dialog.accept())
+    page.get_by_role('button', name='Revoke access', exact=True).click()
+    expect(page.locator('#venue-access')).to_contain_text('No explicit organizer grants')
+    failed_identity = '00000000-0000-0000-0000-000000000003'
+    def rejection(code, detail):
+        """Bind expected errors without optional callback parameters Playwright fills."""
+        def respond(route):
+            """Return the configured application failure for this grant attempt."""
+            fulfill(route, {'detail': detail}, code)
+        return respond
+    for code, detail in [(404, 'User not found'), (409, 'User is not an organizer'), (403, 'Venue ownership required')]:
+        page.route(f'**/venues/venue-access/organizers/{failed_identity}',
+            rejection(code, detail))
+        page.get_by_label('Organizer account UUID').fill(failed_identity)
+        page.get_by_role('button', name='Grant access', exact=True).click()
+        expect(page.locator('#venue-access')).to_contain_text(detail)
+        expect(page.get_by_role('button', name='Grant access', exact=True)).to_be_enabled()
+        expect(page.get_by_label('Organizer account UUID')).to_have_value(failed_identity)
+    # A mutation response delivered after logout cannot refresh a private view.
+    pending = []
+    page.route(f'**/venues/venue-access/organizers/{identity}', lambda route: pending.append(route))
+    page.get_by_label('Organizer account UUID').fill(identity)
+    with page.expect_request(f'**/venues/venue-access/organizers/{identity}'):
+        page.get_by_role('button', name='Grant access', exact=True).click()
+    page.locator('#logout').click()
+    pending[0].fulfill(status=204, body='')
+    expect(page.locator('#venues-view')).not_to_be_visible()
+    expect(page.locator('#venues-content')).not_to_contain_text(identity)

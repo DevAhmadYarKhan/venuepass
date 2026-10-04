@@ -6,6 +6,7 @@ import "./auth.js";
 import "./booking.js";
 import "./navigation.js";
 import "./venues.js";
+import "./venue_access.js";
 
 const pageSize = 6;
 let offset = 0;

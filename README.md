@@ -657,3 +657,8 @@ to page through physical seats and submit editable batches of up to 500 seats.
 Duplicate batches fail atomically. New seats affect future events, not existing
 event snapshots. After an uncertain creation response, refresh and inspect the
 list before submitting again; the interface never automatically repeats creation.
+
+Venue owners can grant hosting access using an organizer's account UUID and
+confirm revocation from the selected venue's organizer list. The target account
+must already have organizer permission (granted by the operator through the CLI).
+The list shows explicit grants only; owning organizers need no grant to host.

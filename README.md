@@ -644,6 +644,22 @@ as a separate step before starting Uvicorn; Compose's dependency ordering only
 applies when using this Compose file. Test databases, seed data, and deployment
 automation are not included in this change.
 
+### Startup on a free Render Docker service
+
+For a single application instance on Render's free plan, set **Docker Command**
+to `python -m app.start` and **PORT** to `8000`. The launcher runs
+`python -m alembic upgrade head` against the configured `DATABASE_URL`, then
+replaces itself with Uvicorn only if migrations succeed. Failed migrations retain
+their exit status and prevent application startup. This avoids shell quoting in
+Render's command field. The Dockerfile already includes the module through its
+`COPY app ./app` instruction; no Dockerfile or Compose changes are required.
+
+Supply the production Neon URL (using `postgresql+psycopg://` and preserving TLS
+parameters), `JWT_SECRET`, and `REDIS_URL` in Render's environment settings. The
+launcher inherits these settings. Local Compose continues using its separate
+migration service and existing Uvicorn command. Move migrations to a separate
+deployment step before scaling to multiple application instances.
+
 ## Browser application
 
 Open `/app/` (or `/`, which redirects there). Existing `/demo/` links continue to
